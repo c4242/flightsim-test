@@ -23,7 +23,7 @@ export const KEYMAP = [
   ['Mouse drag', 'Look around (double-click to recentre)'],
   ['N', 'Map'],
   ['V', 'Instant replay of the last minute (C changes camera)'],
-  ['H', 'Hide / show instruments and HUD'],
+  ['H', 'Hide / show the instrument panel, readouts and minimap (the F-16 HUD always stays on)'],
   ['M', 'Mute'],
   ['P or Esc', 'Pause menu'],
   ['Enter', 'Restart after a crash'],

@@ -102,7 +102,7 @@ setVolume(settings.volume);
 if (isTouch) {
   initTouch(document.getElementById('touch'));
   hud.compact = true;
-  hud.togglePanel();
+  hud.panelBar = false; // no room for the gauge panel; readouts and the F-16 HUD stay
 }
 
 addEventListener('resize', () => {

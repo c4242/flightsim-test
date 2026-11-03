@@ -54,6 +54,7 @@ export function createHud(canvas) {
   let g = canvas.getContext('2d');
   let W = 0, H = 0, dpr = 1;
   let showPanel = true;
+  let panelBar = true; // the big gauge panel / engine strip (off on small touch screens)
   let showMap = false;
   let compact = false;
   const messages = [];
@@ -812,9 +813,14 @@ export function createHud(canvas) {
       }
       g.restore();
     }
+    // ---- Tapes, readouts and warnings: scaled down on small screens so they don't crowd the view ----
+    const k = Math.max(0.55, Math.min(1, W / 1100, H / 620));
+    g.save();
+    g.translate(cx, cy); g.scale(k, k); g.translate(-cx, -cy);
+    g.lineWidth = 1.6 / k;
     // ---- Heading tape ----
     g.font = `13px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    const deg = ac.heading * DEG, ty = conformal ? 62 : 70;
+    const deg = ac.heading * DEG, ty = Math.max(conformal ? 62 : 70, cy - (cy - 62) / k + 8);
     for (let d = Math.ceil((deg - 25) / 5) * 5; d <= deg + 25; d += 5) {
       const xx = cx + (d - deg) * 7;
       g.beginPath(); g.moveTo(xx, ty); g.lineTo(xx, ty + (d % 10 === 0 ? 9 : 5)); g.stroke();
@@ -867,6 +873,7 @@ export function createHud(canvas) {
     const flash = Math.floor(performance.now() / 300) % 2 === 0;
     g.font = `bold 20px ${FONT}`; g.textAlign = 'center';
     warnings.forEach((w, i) => { if (flash || w.steady) g.fillText(w.text, cx, cy + 92 + i * 26); });
+    g.restore();
     g.restore();
   }
 
@@ -999,17 +1006,18 @@ export function createHud(canvas) {
     if (replay) { replayBanner(replay); return; }
 
     const jet = ac.type?.kind === 'jet';
-    if (jet && showPanel) jetHud(ac, camera, cameraMode === 'cockpit', jetWarnings(ac));
+    // The jet's HUD is part of the aircraft and is always shown; H only hides the panels and readouts.
+    if (jet) jetHud(ac, camera, cameraMode === 'cockpit', jetWarnings(ac));
     else if (cameraMode === 'cockpit' && showPanel) cockpitHud(ac, camera);
     if (rings?.active) { guide(ac, camera, rings.next, '#3dff7a'); ringStatus(rings); }
     mapTarget = mission?.active ? mission.target : null;
     if (mapTarget) guide(ac, camera, mapTarget, '#ffb21a');
     if (mission?.mission) objectivesPanel(mission);
-    readouts(ac, 16, 16, wind, ap);
-    if (!compact) drawMinimap(ac, rings, W - 100, 100, 84);
+    if (showPanel) readouts(ac, 16, 16, wind, ap);
+    if (showPanel && !compact) drawMinimap(ac, rings, W - 100, 100, 84);
 
-    if (jet && showPanel && cameraMode !== 'cockpit') jetStrip(ac);
-    else if (showPanel && cameraMode !== 'cockpit') {
+    if (jet && showPanel && panelBar && cameraMode !== 'cockpit') jetStrip(ac);
+    else if (!jet && showPanel && panelBar && cameraMode !== 'cockpit') {
       const R = Math.max(30, Math.min(72, W / 18, H / 9.5));
       const used = sixPack(0, 0, R, ac, ap, true);
       const px = Math.max(10, (W - used) / 2);
@@ -1051,6 +1059,7 @@ export function createHud(canvas) {
     drawPanelTexture(cv, ac, ap) { if (ac.type?.kind === 'jet') drawJetPanelTexture(cv, ac); else drawPanelTexture(cv, ac, ap); },
     showLanding(e, aim) { landing = { e, aim, t: 7 }; },
     togglePanel() { showPanel = !showPanel; },
+    set panelBar(v) { panelBar = v; },
     toggleMap() { showMap = !showMap; return showMap; },
     set compact(v) { compact = v; },
     clearMessages() { messages.length = 0; landing = null; },

@@ -184,7 +184,7 @@ volume and inverted pitch. They are saved in your browser. Add `?quality=low` to
 | Mouse drag | Look around (double-click to recentre) |
 | N | Map |
 | V | Instant replay of the last minute |
-| H | Hide / show the instruments and HUD |
+| H | Hide / show the instrument panel, readouts and minimap (the F-16 HUD always stays on) |
 | M | Mute |
 | P / Esc | Pause menu |
 | Enter | Restart after a crash |
