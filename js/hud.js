@@ -61,6 +61,8 @@ export function createHud(canvas) {
   const _d = new THREE.Vector3();
   let mapImage = null;
   let landing = null; // last landing report
+  let curNav = null;   // current ILS guidance (or null)
+  let curTanker = null;
 
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
@@ -182,6 +184,22 @@ export function createHud(canvas) {
     g.beginPath();
     g.moveTo(x, y - R * 0.82); g.lineTo(x - R * 0.06, y - R * 0.72); g.lineTo(x + R * 0.06, y - R * 0.72);
     g.closePath(); g.fill();
+    // ILS: localizer (vertical) and glideslope (horizontal) needles, with deviation dots.
+    if (curNav) {
+      const k = R * 0.62;
+      g.fillStyle = 'rgba(255,255,255,0.8)';
+      for (let i = -2; i <= 2; i++) {
+        if (!i) continue;
+        g.beginPath(); g.arc(x + (i / 2) * k, y + R * 0.55, 2.2, 0, 7); g.fill();
+        g.beginPath(); g.arc(x + R * 0.82, y + (i / 2) * k, 2.2, 0, 7); g.fill();
+      }
+      g.strokeStyle = '#ff4fd8'; g.lineWidth = 3;
+      g.beginPath();
+      const lx = x + curNav.loc * k;
+      g.moveTo(lx, y - R * 0.6); g.lineTo(lx, y + R * 0.6);
+      if (curNav.gsValid) { const gy = y - curNav.gs * k; g.moveTo(x - R * 0.6, gy); g.lineTo(x + R * 0.6, gy); }
+      g.stroke();
+    }
   }
 
   function altimeter(x, y, R, ft) {
@@ -439,6 +457,7 @@ export function createHud(canvas) {
       rows.splice(1, 0, ['MACH', ac.mach.toFixed(2)]);
       rows.push(['FUEL', `${Math.round(ac.fuel * 2.20462 / 10) * 10} lb`]);
     }
+    if (curNav) rows.push(['ILS', `${curNav.name.slice(4)} ${curNav.dme.toFixed(1)} NM`]);
     if (ap?.on) rows.push(['A/P', `${String(Math.round(ap.heading * DEG) % 360).padStart(3, '0')}° ${Math.round(ap.altitude * M_TO_FT / 10) * 10} ft`]);
     if (extra) rows.push(...extra);
     const lh = compact ? 15 : 18;
@@ -479,6 +498,10 @@ export function createHud(canvas) {
     const srcSize = range / mpp;
     g.drawImage(mapImage, sx - srcSize / 2, sz - srcSize / 2, srcSize, srcSize, cx - r, cy - r, 2 * r, 2 * r);
     if (rings?.active) drawRingsOnMap(rings, (wx, wz) => [cx + (wx - ac.pos.x) * scale, cy + (wz - ac.pos.z) * scale], 3);
+    if (curTanker && ac.type?.kind === 'jet') {
+      const tx = cx + (curTanker.pos.x - ac.pos.x) * scale, ty = cy + (curTanker.pos.z - ac.pos.z) * scale;
+      g.fillStyle = '#7cf'; g.beginPath(); g.arc(tx, ty, 4, 0, 7); g.fill();
+    }
     g.restore();
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2);
     g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 2; g.stroke();
@@ -541,6 +564,11 @@ export function createHud(canvas) {
       rings.points.forEach((p, i) => { const [x, y] = toScreen(p.x, p.z); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
       g.stroke(); g.setLineDash([]);
       drawRingsOnMap(rings, toScreen, 5);
+    }
+    if (curTanker) {
+      const [tx, ty] = toScreen(curTanker.pos.x, curTanker.pos.z);
+      g.fillStyle = '#7cf'; g.beginPath(); g.arc(tx, ty, 5, 0, 7); g.fill();
+      g.font = `12px ${FONT}`; g.textAlign = 'left'; g.fillText('TANKER FL200', tx + 8, ty);
     }
     const [px, py] = toScreen(ac.pos.x, ac.pos.z);
     planeIcon(px, py, ac.heading, 12);
@@ -680,6 +708,27 @@ export function createHud(canvas) {
 
   let mapTarget = null;
 
+  // Air-to-air refuelling status and the boom operator's director cues.
+  function refuelPanel(tk) {
+    if (!tk || !tk.cues) return;
+    const c = tk.cues;
+    const contact = tk.state === 'contact';
+    const w = 300, h = 96, x = W / 2 - w / 2, y = H - (compact ? 120 : 200);
+    g.fillStyle = 'rgba(8,12,18,0.7)';
+    g.fillRect(x, y, w, h);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `bold 16px ${FONT}`;
+    g.fillStyle = contact ? '#3dff6e' : '#ffcf6a';
+    g.fillText(contact ? 'CONTACT' : 'PRE-CONTACT', x + w / 2, y + 16);
+    g.font = `bold 20px ${FONT}`;
+    const cue = (txt, cx) => { g.fillStyle = txt ? '#ffffff' : '#56606b'; g.fillText(txt || '—', cx, y + 48); };
+    cue(c.vertical, x + w * 0.2); cue(c.fore, x + w * 0.5); cue(c.lateral, x + w * 0.8);
+    g.font = `12px ${FONT}`; g.fillStyle = '#9aa8b8';
+    const geo = tk.geometry;
+    g.fillText(geo ? `elev ${geo.elev.toFixed(0)}°  az ${geo.az.toFixed(0)}°  boom ${geo.r.toFixed(1)} m  closure ${geo.relSpeed.toFixed(1)} m/s` : '', x + w / 2, y + 72);
+    if (tk.totalTransferred > 0) g.fillText(`received ${Math.round(tk.totalTransferred * 2.20462)} lb`, x + w / 2, y + 88);
+  }
+
 
   // ================= F-16 style HUD =================
   const HUDC = '#56ff86';
@@ -719,6 +768,17 @@ export function createHud(canvas) {
         g.moveTo(fx - 28, by - 12); g.lineTo(fx - 34, by - 12); g.lineTo(fx - 34, by + 12); g.lineTo(fx - 28, by + 12);
         g.stroke();
       }
+    }
+    // ---- ILS steering: localizer and glideslope bars relative to the flight path marker ----
+    if (curNav && (ac.gearDown > 0.5 || curNav.dme < 12)) {
+      const k = 55;
+      g.save();
+      g.lineWidth = 2;
+      const lx = fx + curNav.loc * k;
+      g.beginPath(); g.moveTo(lx, fy - k); g.lineTo(lx, fy + k);
+      if (curNav.gsValid) { const gy = fy - curNav.gs * k; g.moveTo(fx - k, gy); g.lineTo(fx + k, gy); }
+      g.stroke();
+      g.restore();
     }
     // ---- Pitch ladder (conformal only) ----
     if (conformal) {
@@ -802,6 +862,7 @@ export function createHud(canvas) {
     g.font = `14px ${FONT}`;
     if (ac.agl * M_TO_FT < 5000) g.fillText(`R ${String(Math.max(0, Math.round(ac.agl * M_TO_FT / 10) * 10)).padStart(4, '0')}`, bx + 4, cy + 128);
     g.fillText(`${Math.round(ac.vel.y * 196.85 / 100) * 100}`, bx + 4, cy - 128);
+    if (curNav) { g.textAlign = 'left'; g.font = `14px ${FONT}`; g.fillText(`${curNav.name}  ${curNav.dme.toFixed(1)}`, bx + 4, cy + 148); }
     // ---- Warnings ----
     const flash = Math.floor(performance.now() / 300) % 2 === 0;
     g.font = `bold 20px ${FONT}`; g.textAlign = 'center';
@@ -900,9 +961,11 @@ export function createHud(canvas) {
     g = prev;
   }
 
-  function draw(ac, camera, cameraMode, dt, { wind, ap, rings, mission, replay }) {
+  function draw(ac, camera, cameraMode, dt, { wind, ap, rings, mission, replay, nav, tanker }) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
+    curNav = nav ?? null;
+    curTanker = tanker ?? null;
     if (replay) { replayBanner(replay); return; }
 
     const jet = ac.type?.kind === 'jet';
@@ -928,6 +991,7 @@ export function createHud(canvas) {
       sixPack(px, cy, R, ac, ap);
     }
 
+    if (ac.type?.kind === 'jet') refuelPanel(tanker);
     landingCard(dt);
 
     for (let i = messages.length - 1; i >= 0; i--) {

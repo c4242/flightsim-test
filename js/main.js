@@ -8,7 +8,9 @@ import { SKYLARK } from './planes/skylark.js';
 import { F16 } from './planes/f16.js';
 import { initInput, initTouch, updateControls, consumePresses, getLook, KEYMAP, setInputOptions } from './input.js';
 import { createHud } from './hud.js';
-import { startAudio, updateAudio, toggleMute, setPaused, playThump, playCrash, playChime, setVolume } from './audio.js';
+import { startAudio, updateAudio, toggleMute, setPaused, playThump, playCrash, playChime, setVolume, playBoom } from './audio.js';
+import { ilsGuidance } from './nav.js';
+import { Tanker } from './tanker.js';
 import { Weather, WIND_LEVELS } from './weather.js';
 import { Autopilot } from './autopilot.js';
 import { Effects } from './effects.js';
@@ -86,9 +88,12 @@ const rings = new RingCourse(scene);
 const autopilot = new Autopilot();
 const traffic = new Traffic(scene);
 const missions = new MissionRunner();
+const tanker = new Tanker(scene);
+missions.ctx = { tanker };
 const recorder = new Recorder();
 let replaying = false;
 applyTime(settings.timeOfDay);
+sky.setClouds(settings.clouds);
 
 const hud = createHud(document.getElementById('hud'));
 initInput(renderer.domElement);
@@ -232,6 +237,11 @@ fillSelect('setTime', TIMES_OF_DAY, settings.timeOfDay).addEventListener('change
   settings.timeOfDay = e.target.value; saveSettings(settings);
   if (!missions.mission?.time) applyTime(settings.timeOfDay);
 });
+const CLOUD_LABELS = { clear: 'Clear', scattered: 'Scattered', overcast: 'Overcast (1,500 ft)', fog: 'Fog' };
+fillSelect('setClouds', Object.keys(CLOUD_LABELS), settings.clouds, (v) => CLOUD_LABELS[v]).addEventListener('change', (e) => {
+  settings.clouds = e.target.value; saveSettings(settings);
+  if (!missions.mission?.clouds) sky.setClouds(settings.clouds);
+});
 fillSelect('setWind', Object.keys(WIND_LEVELS), settings.wind).addEventListener('change', (e) => {
   settings.wind = e.target.value; saveSettings(settings);
   if (!missions.mission) weather.set(settings.wind);
@@ -283,13 +293,16 @@ function spawn(id) {
     missions.start(m);
     weather.set(m.wind[0], m.wind[1]);
     applyTime(m.time ?? settings.timeOfDay);
-    aircraft.reset(m.spawn(kind()));
+    sky.setClouds(m.clouds ?? settings.clouds);
+    m.setup?.(missions.ctx);
+    aircraft.reset(m.spawn(kind(), missions.ctx));
     hint = `Mission: ${m.title}`;
   } else {
     missions.stop();
     weather.set(settings.wind);
     weather.randomise();
     applyTime(settings.timeOfDay);
+    sky.setClouds(settings.clouds);
     if (id === 'rings') {
       aircraft.reset(rings.spawn(kind()));
       rings.start();
@@ -301,6 +314,7 @@ function spawn(id) {
     hint = (kind() === 'jet' && sc.jetHint) || (isTouch && sc.touchHint) || sc.hint;
   }
   subject = aircraft;
+  prevMach = aircraft.mach;
   snapCamera();
   resultBox.classList.add('hidden');
   started = true;
@@ -512,6 +526,22 @@ function updatePilot(dt) {
   aircraft.gcas = !aircraft.onGround && !aircraft.crashed && aircraft.gearDown < 0.5 && sink > 8 && aircraft.agl / sink < 5;
 }
 
+// ---------- Adaptive resolution ----------
+// Lowers the render resolution when frames take too long, and raises it again when there is headroom.
+const maxRatio = Math.min(devicePixelRatio || 1, low ? 1 : 2);
+let pixelRatio = maxRatio, frameAvg = 1 / 60, resTimer = 0;
+function adaptResolution(dt) {
+  frameAvg += (dt - frameAvg) * 0.05;
+  resTimer += dt;
+  if (resTimer < 2) return;
+  resTimer = 0;
+  let next = pixelRatio;
+  if (frameAvg > 1 / 40) next = Math.max(0.6, pixelRatio - 0.15);
+  else if (frameAvg < 1 / 57) next = Math.min(maxRatio, pixelRatio + 0.1);
+  if (Math.abs(next - pixelRatio) > 0.01) { pixelRatio = next; renderer.setPixelRatio(pixelRatio); }
+}
+let prevMach = 0;
+
 // ---------- Main loop ----------
 const STEP = 1 / 240;
 let acc = 0;
@@ -520,14 +550,17 @@ let panelTimer = 0;
 let clock = 0;
 
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const rawDt = (now - last) / 1000;
+  const dt = Math.min(0.05, rawDt);
   last = now;
+  if (!paused) adaptResolution(Math.min(rawDt, 0.25));
   handlePresses();
 
   if (replaying) {
     clock += dt;
     subject = recorder.sample(dt);
     traffic.update(dt);
+    tanker.update(dt, null);
     effects.update(dt);
   } else if (!paused) {
     clock += dt;
@@ -545,6 +578,15 @@ function frame(now) {
     traffic.update(dt);
     updatePilot(dt);
     if (!aircraft.crashed && aircraft.pos.distanceTo(traffic.pos) < (kind() === 'jet' ? 9 : 7)) aircraft.crash('Mid-air collision with other traffic');
+    tanker.update(dt, aircraft);
+    for (const e of tanker.events) {
+      if (e.type === 'contact') { playChime([660, 990], 0.12); hud.message('Contact: taking on fuel', '#3dff6e', 2.5); }
+      if (e.type === 'disconnect') { playChime([700, 500], 0.12); hud.message(`Disconnect (${e.reason === 'limits' ? 'out of limits' : 'closure rate'})`, '#fc6', 2.5); }
+      if (e.type === 'full') hud.message('Tanks full', '#3dff6e', 2.5);
+    }
+    // Sonic boom heard from outside when the jet accelerates through Mach 1.
+    if (kind() === 'jet' && prevMach < 1 && aircraft.mach >= 1 && cameraMode !== 'cockpit') playBoom(cameraMode === 'chase' ? 0.6 : 1);
+    prevMach = aircraft.mach;
     handleEvents();
     handleMission(dt);
     const r = rings.update(aircraft, dt);
@@ -577,7 +619,8 @@ function frame(now) {
   updateAudio(replaying ? { ...aircraft, crashed: true } : aircraft);
   renderer.render(scene, camera);
   hud.draw(aircraft, camera, cameraMode, paused && !replaying ? 0 : dt, {
-    wind: aircraft.wind, ap: autopilot, rings, mission: missions,
+    wind: aircraft.wind, ap: autopilot, rings, mission: missions, tanker: kind() === 'jet' ? tanker : null,
+    nav: aircraft.crashed ? null : ilsGuidance(aircraft.pos, aircraft.heading),
     replay: replaying ? { t: recorder.t, duration: recorder.duration } : null,
   });
   requestAnimationFrame(frame);
@@ -593,4 +636,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { aircraft, camera, scene, weather, autopilot, rings, missions, traffic, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

@@ -197,6 +197,24 @@ export function playThump(strength = 0.5) {
   src.start();
 }
 
+// Sonic boom: the classic double "boom-boom" of the bow and tail shocks.
+export function playBoom(level = 1) {
+  if (!ctx) return;
+  for (const delay of [0, 0.16]) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(1.2);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = 140;
+    const g = ctx.createGain();
+    const t = ctx.currentTime + delay;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(1.6 * level, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+    src.connect(f).connect(g).connect(master);
+    src.start(t);
+  }
+}
+
 export function playCrash() {
   if (!ctx) return;
   const src = ctx.createBufferSource();

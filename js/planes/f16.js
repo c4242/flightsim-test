@@ -116,6 +116,7 @@ export const F16 = {
   inertia: new THREE.Vector3(75674, 85552, 12875),
   contactY: -1.72,
   retractableGear: true,
+  fuelMax: FUEL_MAX,
   gearTime: 4,
   gear: [
     { p: new THREE.Vector3(0, -1.72, -3.4), steer: true, brake: false, k: 180000, c: 30000, collapse: 0.5 },

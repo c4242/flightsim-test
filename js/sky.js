@@ -34,6 +34,7 @@ export function createSky(scene) {
     uniforms: {
       horizon: { value: env.horizon }, zenith: { value: env.zenith },
       sunDir: { value: env.sunDir }, sunColor: { value: env.sunColor }, stars: { value: 0 },
+      hazeColor: { value: new THREE.Color() }, haze: { value: 0 },
     },
     vertexShader: /* glsl */`
       varying vec3 vDir;
@@ -43,8 +44,8 @@ export function createSky(scene) {
         gl_Position = p.xyww;
       }`,
     fragmentShader: /* glsl */`
-      uniform vec3 horizon, zenith, sunDir, sunColor;
-      uniform float stars;
+      uniform vec3 horizon, zenith, sunDir, sunColor, hazeColor;
+      uniform float stars, haze;
       varying vec3 vDir;
       float hash(vec3 p) {
         p = fract(p * 0.3183099 + 0.1);
@@ -72,6 +73,8 @@ export function createSky(scene) {
           }
         }
         if (d.y < 0.0) col = mix(col, horizon * 0.82, min(-d.y * 5.0, 1.0));
+        // Under an overcast, inside cloud or in fog the sky is a flat grey.
+        col = mix(col, hazeColor * (0.92 + 0.08 * up), haze);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -97,6 +100,19 @@ export function createSky(scene) {
   const clouds = buildClouds();
   scene.add(clouds.group);
 
+  // ---------- Overcast cloud deck and fog ----------
+  const deckTex = deckTexture();
+  const deckMat = (c) => new THREE.MeshBasicMaterial({ map: deckTex, color: c, side: THREE.DoubleSide, fog: true });
+  const deckBottom = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000).rotateX(-Math.PI / 2), deckMat(0x9aa2ab));
+  const deckTop = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000).rotateX(-Math.PI / 2), deckMat(0xffffff));
+  deckBottom.visible = deckTop.visible = false;
+  scene.add(deckBottom, deckTop);
+  const LAYERS = { overcast: [450, 1050], low: [200, 900] };
+  let cloudMode = 'scattered';
+  // Base (clear-sky) values for the current time of day, blended per frame.
+  const base = { horizon: new THREE.Color(), zenith: new THREE.Color(), sun: new THREE.Color(), sunI: 1, hemiI: 1, fog: [3000, 38000], hemiSky: new THREE.Color() };
+  const grey = new THREE.Color(), tmp = new THREE.Color();
+
   function setTimeOfDay(name) {
     const p = PRESETS[name] ?? PRESETS.noon;
     const e = p.elev * Math.PI / 180, a = p.az * Math.PI / 180;
@@ -114,6 +130,8 @@ export function createSky(scene) {
     scene.fog.far = p.fog[1];
     scene.background.copy(env.horizon);
     clouds.tint(new THREE.Color(p.cloud), p.night ? 10 : p.elev);
+    base.horizon.copy(env.horizon); base.zenith.copy(env.zenith); base.sun.copy(env.sunColor);
+    base.sunI = p.sunI; base.hemiI = p.hemiI; base.fog = p.fog; base.hemiSky.set(p.hemiSky);
     env.night = !!p.night;
     domeMat.uniforms.stars.value = p.night ? 1.2 : 0;
   }
@@ -122,12 +140,88 @@ export function createSky(scene) {
     env,
     setTimeOfDay,
     setShadows(on) { sun.castShadow = on; },
+    // 'clear', 'scattered', 'overcast' (base 1,500 ft), 'low' (base 650 ft) or 'fog'.
+    setClouds(mode) {
+      cloudMode = mode;
+      clouds.group.visible = mode === 'scattered';
+      const layer = LAYERS[mode];
+      deckBottom.visible = deckTop.visible = !!layer;
+      if (layer) { deckBottom.position.y = layer[0]; deckTop.position.y = layer[1]; }
+    },
+    get cloudMode() { return cloudMode; },
     update(camera, focus) {
       dome.position.copy(camera.position);
+      // Blend lighting, fog and sky for the weather around the camera.
+      const h = camera.position.y;
+      const lum = base.horizon.r * 0.3 + base.horizon.g * 0.55 + base.horizon.b * 0.15;
+      grey.setRGB(lum, lum, lum * 1.04).multiplyScalar(0.9);
+      let below = 0, inside = 0, fogNear = base.fog[0], fogFar = base.fog[1];
+      const layer = LAYERS[cloudMode];
+      if (layer) {
+        deckBottom.position.x = deckTop.position.x = camera.position.x;
+        deckBottom.position.z = deckTop.position.z = camera.position.z;
+        // The deck follows the camera; shift its texture so the clouds stay fixed in the world.
+        deckTex.offset.set((camera.position.x / 1500) % 1, (-camera.position.z / 1500) % 1);
+        const [b, t] = layer;
+        below = 1 - smooth(b - 60, b + 10, h);
+        inside = smooth(b - 30, b + 30, h) * (1 - smooth(t - 30, t + 30, h));
+        fogNear = 300 * below; fogFar = 6000 + (layer === LAYERS.low ? 0 : 3000);
+        if (h > t) { fogNear = base.fog[0]; fogFar = base.fog[1]; }
+        deckBottom.material.color.copy(grey).multiplyScalar(0.85);
+        deckTop.material.color.copy(base.sun).multiplyScalar(env.night ? 0.35 : 1);
+      } else if (cloudMode === 'fog') {
+        const clear = smooth(60, 450, h);
+        below = 1 - clear * 0.75;
+        fogNear = 0; fogFar = 900 + clear * 14000;
+        grey.multiplyScalar(1.12);
+      }
+      // Inside cloud: white-out at a few dozen metres.
+      if (inside > 0.01) { fogNear = 0; fogFar = fogFar + (90 - fogFar) * inside; }
+      const haze = Math.max(below, inside);
+      tmp.copy(grey).lerp(new THREE.Color(lum * 1.15, lum * 1.15, lum * 1.18), inside);
+      domeMat.uniforms.hazeColor.value.copy(tmp);
+      domeMat.uniforms.haze.value = haze;
+      env.horizon.copy(base.horizon).lerp(tmp, haze);
+      env.zenith.copy(base.zenith).lerp(tmp, haze);
+      env.sunColor.copy(base.sun).multiplyScalar(1 - 0.85 * haze);
+      sun.intensity = base.sunI * (1 - 0.8 * haze);
+      hemi.intensity = base.hemiI * (1 + 0.25 * haze);
+      scene.fog.color.copy(env.horizon);
+      scene.background.copy(env.horizon);
+      scene.fog.near = fogNear;
+      scene.fog.far = fogFar;
       sun.target.position.copy(focus);
       sun.position.copy(focus).addScaledVector(env.sunDir, 300);
     },
   };
+}
+
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+// Soft, tiling grey-white texture for the overcast deck.
+function deckTexture() {
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#d8dde2';
+  g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 220; i++) {
+    const x = Math.random() * S, y = Math.random() * S, r = 8 + Math.random() * 30;
+    const v = Math.random() < 0.5 ? 255 : 170;
+    for (const [ox, oy] of [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]]) {
+      const grad = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      grad.addColorStop(0, `rgba(${v},${v},${v + 5},0.35)`);
+      grad.addColorStop(1, `rgba(${v},${v},${v},0)`);
+      g.fillStyle = grad;
+      g.fillRect(x + ox - r, y + oy - r, 2 * r, 2 * r);
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(60, 60);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 function cloudTexture() {

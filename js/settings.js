@@ -8,6 +8,7 @@ export const DEFAULTS = {
   quality: isTouch ? 'low' : 'high',
   timeOfDay: 'noon',
   wind: 'light',
+  clouds: 'scattered',
   invertPitch: false,
   volume: 0.5,
   lookSensitivity: 1,

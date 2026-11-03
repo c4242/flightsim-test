@@ -78,6 +78,33 @@ you get a vapour cone, and you get strake vortices at high AoA.
 
 Skyhaven's runway is 2,400 m so the F-16 can operate from it. Eastfield (850 m) is for the light aircraft only.
 
+## Weather, instruments and refuelling
+
+- **Clouds** (Settings → Clouds):
+  - **Clear.**
+  - **Scattered:** cumulus.
+  - **Overcast:** a solid deck with its base at about 1,500 ft. Below it the sky is grey and the light is
+    flat. Inside it you're in white-out. Above it you're in sunshine over a sea of cloud, with the mountain
+    tops poking through.
+  - **Fog:** visibility under a kilometre near the ground, clearing as you climb.
+
+  Some missions set their own weather.
+- **ILS:** both ends of Skyhaven's runway have an instrument landing system.
+  - The localizer gives ±2.5° full scale and the glideslope 3° (±0.7° full scale), with DME to the threshold.
+  - Reception extends to 18 NM out and up to about 10,000 ft above the field.
+  - The light aircraft shows magenta needles on its attitude indicator.
+  - The F-16 shows localizer and glideslope steering bars around the flight-path marker on the HUD.
+- **Air-to-air refuelling (F-16):** a four-engine boom tanker flies a left-hand racetrack at 20,000 ft and
+  about 300 KCAS (it's on the map).
+  - Fly the receptacle behind your canopy into the boom envelope: boom 11–19 m, 22–38° below the tanker,
+    ±12° either side. Hold it there with less than about 2.5 m/s of closure.
+  - The boom operator then makes contact and fuel flows at about 1,000 lb/min.
+  - The HUD shows the director cues (UP/DOWN, FWD/AFT, LEFT/RIGHT). Leaving the limits disconnects you,
+    and hitting the tanker is a crash.
+- **Sonic boom:** heard from the outside cameras when the jet accelerates through Mach 1.
+- **Adaptive resolution:** the render resolution drops automatically when the frame rate falls below
+  about 40 fps, and comes back up when there is headroom.
+
 ## Scenarios
 
 - **Take off from Skyhaven:** start at the south end of runway 36, engine idling.
@@ -99,11 +126,13 @@ next gate or destination. You earn one to three stars based on your landing scor
 | **F-16:** Viper familiarisation | Afterburner takeoff, gear up, climb to 10,000 ft, pull 6 G, come back and land. |
 | **F-16:** Supersonic dash | From 30,000 ft, accelerate past Mach 1.6, then descend, slow down and land. |
 | **F-16:** Canyon run | Fly fast and low through three gates up the canyon, then climb out. |
+| **F-16:** Air-to-air refuelling | Low on fuel at 20,000 ft: join the tanker, get contact and take on 3,000 lb, then land. |
 | **F-16:** Flameout landing | Low on fuel over the field at 9,500 ft; the engine quits; spiral down and land. |
 | First flight | Take off, climb to 1,500 ft, turn south and land back at Skyhaven. |
 | Traffic circuit | Fly a left-hand circuit through crosswind, downwind, base and final gates, sharing the circuit with AI traffic, and land on 36. |
 | Cross-country to Eastfield | Fly over the village of Eastbrook and land on the short hilltop strip. |
 | Engine failure | The engine quits on the way in. Glide to a runway at about 65 kt. |
+| ILS approach in cloud (both aircraft) | Start inside a low overcast (base about 650 ft) on the localizer; fly the needles down and land on 36. |
 | Strong crosswind (both aircraft) | Land on 36 in a strong, gusty westerly. |
 | Night landing (both aircraft) | A moonlit approach using the approach lights, the PAPI and your landing light. |
 
@@ -182,10 +211,12 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/planes/skylark.js` | The light trainer's aerodynamics, propeller engine and direct control surfaces. |
 | `js/atmosphere.js` | International Standard Atmosphere, Mach number and calibrated airspeed. |
 | `js/model-f16.js` | The F-16 3D model: moving stabilators, flaperons and rudder, speedbrakes, retracting gear, afterburner plume, wingtip AIM-9s, landing light and cockpit. |
+| `js/nav.js` | The ILS: localizer, glideslope and DME for both runway ends. |
+| `js/tanker.js` | The refuelling tanker: racetrack flight path, model, boom, contact envelope, director cues and fuel transfer. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |
 | `js/autopilot.js` | Heading and altitude hold with coordinated turns and stall protection. |
 | `js/terrain.js` | The island heightfield, terrain colours plus a multi-scale detail shader, the water shader (waves, Fresnel sky reflection, sun glint, shallow-water colour, shoreline foam), both airfields (runway markings drawn on a canvas, PAPI, approach and edge lights, hangars, tower, windsocks), villages of instanced houses with lit windows and street lights at night, and instanced trees. Trees and buildings are also registered for collision. |
-| `js/sky.js` | Sky dome with a procedural star field, time-of-day presets (sun position and colour, ambient light, fog), the shadow that follows the aircraft, and clouds. |
+| `js/sky.js` | Sky dome with a procedural star field, the overcast cloud deck and fog, time-of-day presets (sun position and colour, ambient light, fog), the shadow that follows the aircraft, and clouds. |
 | `js/model.js` | The aircraft: moving ailerons, flaps, elevator and rudder, propeller, wheels, nav lights, strobes and beacon, plus the cockpit interior with a live instrument panel, a yoke and a throttle. |
 | `js/hud.js` | Instruments, readouts, cockpit HUD, minimap and island map, ring guidance, landing report and messages. |
 | `js/missions.js` | Mission definitions, objectives, scripted events (such as the engine failure) and star ratings. |

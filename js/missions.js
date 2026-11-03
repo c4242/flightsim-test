@@ -61,6 +61,19 @@ export const MISSIONS = [
     events: [{ at: 5, run: (ac) => { ac.engineFailed = true; }, msg: 'FLAMEOUT! Hold 200 kt and glide. Gear down at the low key.' }],
     objectives: [land('Glide to a landing on a runway and stop', 'any')],
   },
+  {
+    id: 'viper-aar', aircraft: ['jet'], title: 'Air-to-air refuelling',
+    brief: 'Low on fuel at 20,000 ft. Join the tanker, stabilise behind it and fly the receptacle into the boom envelope. Follow the director cues (UP/DOWN, FWD/AFT) and hold steady to get contact. Small, smooth throttle changes!',
+    spawn: (k, ctx) => ({ ...ctx.tanker.joinSpawn(1500, 90), fuel: 900 }),
+    setup: (ctx) => ctx.tanker.reset(1500),
+    wind: ['light', 300],
+    objectives: [
+      { text: 'Join up behind the tanker (within 100 m)', target: (ctx) => ctx.tanker.pos, done: (ac, ctx) => (ctx.tanker.geometry?.r ?? 1e9) < 100 },
+      { text: 'Get contact with the boom', done: (ac, ctx) => ctx.tanker.state === 'contact' },
+      { text: 'Take on 3,000 lb of fuel', done: (ac, ctx) => ctx.tanker.totalTransferred >= 1361 },
+      land('Disconnect and land at Skyhaven', 'main'),
+    ],
+  },
   // ---------------- Light aircraft ----------------
   {
     id: 'first', aircraft: ['prop'], title: 'First flight',
@@ -105,6 +118,12 @@ export const MISSIONS = [
     objectives: [land('Glide to a landing on a runway and stop', 'any')],
   },
   {
+    id: 'ils', aircraft: ['prop', 'jet'], title: 'ILS approach in cloud',
+    brief: 'Low overcast, cloud base about 650 ft. You start on the localizer for runway 36, inside the cloud. Fly the ILS needles (centre both) and look for the runway lights below the cloud.',
+    spawn: (k) => approachSpawn('main', 0, 12000, { kind: k }), wind: ['light', 10], clouds: 'low',
+    objectives: [land('Land on runway 36 and stop', 'main')],
+  },
+  {
     id: 'crosswind', title: 'Strong crosswind',
     brief: 'Land on runway 36 with a strong, gusty wind from the west. Bank into the wind and hold the centreline with the rudder.',
     aircraft: ['prop', 'jet'],
@@ -128,6 +147,7 @@ function loadStars() {
 export class MissionRunner {
   constructor() {
     this.mission = null;
+    this.ctx = {};
     this.stars = loadStars();
   }
 
@@ -151,7 +171,7 @@ export class MissionRunner {
   get target() {
     const o = this.objective;
     if (!this.active || !o) return null;
-    if (o.target) return o.target;
+    if (o.target) return typeof o.target === 'function' ? o.target(this.ctx) : o.target;
     if (o.land && o.land !== 'any') { const f = field(o.land); return new THREE.Vector3(f.x, f.elevation + 5, f.z); }
     return null;
   }
@@ -172,7 +192,7 @@ export class MissionRunner {
     if (ac.crashed) { this.state = 'failed'; return { type: 'fail', reason: ac.crashReason }; }
     const o = this.objective;
     let done = false;
-    if (o.done) done = o.done(ac);
+    if (o.done) done = o.done(ac, this.ctx);
     else if (o.target) done = ac.pos.distanceTo(o.target) < o.radius;
     else if (o.land) {
       if (ac.onGround && ac.speed < 2 && this.touchedDown) {
