@@ -114,27 +114,32 @@ export const F16 = {
   span: 9.96,
   // Pitch, yaw, roll moments of inertia (kg m²), Stevens & Lewis.
   inertia: new THREE.Vector3(75674, 85552, 12875),
-  contactY: -1.72,
+  // Gear and airframe points match the FlightGear F-16 model (see js/model-f16fg.js): wheelbase
+  // 3.6 m, main-gear track 2.46 m, tail strike at about 17° of pitch on the main wheels.
+  contactY: -1.85,
   retractableGear: true,
   fuelMax: FUEL_MAX,
   gearTime: 4,
   gear: [
-    { p: new THREE.Vector3(0, -1.72, -3.4), steer: true, brake: false, k: 180000, c: 30000, collapse: 0.5 },
-    { p: new THREE.Vector3(-1.18, -1.72, 0.65), steer: false, brake: true, k: 420000, c: 55000, collapse: 0.5 },
-    { p: new THREE.Vector3(1.18, -1.72, 0.65), steer: false, brake: true, k: 420000, c: 55000, collapse: 0.5 },
+    { p: new THREE.Vector3(0, -1.85, -2.98), steer: true, brake: false, k: 180000, c: 30000, collapse: 0.5 },
+    { p: new THREE.Vector3(-1.23, -1.85, 0.6), steer: false, brake: true, k: 420000, c: 55000, collapse: 0.5 },
+    { p: new THREE.Vector3(1.23, -1.85, 0.6), steer: false, brake: true, k: 420000, c: 55000, collapse: 0.5 },
   ],
   structure: [
-    { p: new THREE.Vector3(0, 0, -9.0) },                          // pitot / nose
-    { p: new THREE.Vector3(0, -0.95, -4.6), belly: true },         // intake lip
-    { p: new THREE.Vector3(0, -1.0, 0.0), belly: true },           // belly
-    { p: new THREE.Vector3(0, -0.18, 6.4), tail: true },           // nozzle: strikes at ~15° pitch on the mains
-    { p: new THREE.Vector3(-0.6, -0.77, 4.2), tail: true },        // ventral fins
-    { p: new THREE.Vector3(0.6, -0.77, 4.2), tail: true },
-    { p: new THREE.Vector3(-2.75, -0.3, 6.0), tail: true },        // stabilator tips
-    { p: new THREE.Vector3(2.75, -0.3, 6.0), tail: true },
-    { p: new THREE.Vector3(0, 3.1, 6.3) },                         // fin tip
-    { p: new THREE.Vector3(-4.98, -0.12, 0.9), wingtip: true },    // wingtip missiles
-    { p: new THREE.Vector3(4.98, -0.12, 0.9), wingtip: true },
+    { p: new THREE.Vector3(0, -0.22, -8.37) },                     // pitot
+    { p: new THREE.Vector3(0, -0.86, -3.56), belly: true },        // intake lip
+    { p: new THREE.Vector3(0, -0.93, -2.4), belly: true },         // nose-gear bay
+    { p: new THREE.Vector3(0, -0.93, 0.3), belly: true },          // belly
+    { p: new THREE.Vector3(-0.58, -1.05, 3.24), tail: true },      // ventral fins
+    { p: new THREE.Vector3(0.58, -1.05, 3.24), tail: true },
+    { p: new THREE.Vector3(0, -0.55, 4.66), tail: true },          // nozzle
+    { p: new THREE.Vector3(-2.6, -0.27, 5.68), tail: true },       // stabilator tips
+    { p: new THREE.Vector3(2.6, -0.27, 5.68), tail: true },
+    { p: new THREE.Vector3(-2.8, -0.31, 5.38), tail: true },
+    { p: new THREE.Vector3(2.8, -0.31, 5.38), tail: true },
+    { p: new THREE.Vector3(0, 3.14, 5.9) },                        // fin tip
+    { p: new THREE.Vector3(-4.93, -0.06, 1.2), wingtip: true },    // wingtip missiles
+    { p: new THREE.Vector3(4.93, -0.06, 1.2), wingtip: true },
   ],
   steer: { angle: 0.5, fadeSpeed: 45 },
   brakeMu: 0.5,             // anti-skid wheel brakes

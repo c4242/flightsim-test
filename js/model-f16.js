@@ -3,6 +3,7 @@
 // length 15.0 m, span 9.96 m with wingtip missiles, wing leading-edge sweep 40°.
 
 import * as THREE from 'three';
+import { loadFlightGearF16 } from './model-f16fg.js';
 
 const DEG = Math.PI / 180;
 
@@ -30,7 +31,9 @@ function planform(points, thickness, side = 1) {
   return geo;
 }
 
-export function createF16Model() {
+// The detailed FlightGear model is loaded in the background; until it arrives (or if it can't be
+// loaded) the primitive model below is shown.
+export function createF16Model({ renderer } = {}) {
   const root = new THREE.Group();
   const greyHi = new THREE.MeshStandardMaterial({ color: 0x8e959b, roughness: 0.55, metalness: 0.15 });
   const greyLo = new THREE.MeshStandardMaterial({ color: 0xa9afb4, roughness: 0.55, metalness: 0.15 });
@@ -243,18 +246,48 @@ export function createF16Model() {
   const thrGrip = cAdd(new THREE.BoxGeometry(0.05, 0.08, 0.08), black, -0.42, 0.5, -4.8);
 
   let t = 0;
+  let night = false;
+  let cockpitView = false;
+  const eye = new THREE.Vector3(0, 0.9, -4.75);
+
+  // ---------- FlightGear model ----------
+  let fg = null;
+  const keep = new Set([cockpit, flame, core, exhaustGlow, landingLight, landingLight.target, landingGlow, beacon]);
+  loadFlightGearF16(renderer).then((m) => {
+    fg = m;
+    for (const c of root.children) if (!keep.has(c)) c.visible = false;
+    root.add(m.root);
+    // Re-fit our cockpit, flame and lights to the real airframe.
+    cockpit.position.set(0, -0.08, 0.55);
+    eye.set(0, 0.82, -4.2);
+    for (const o of [flame, core]) o.position.set(0, -0.05, 5.6);
+    exhaustGlow.position.set(0, -0.05, 5.75);
+    beacon.position.set(0, 3.15, 5.34);
+    landingLight.position.set(0, -1.45, -3.0);
+    landingGlow.position.set(0, -1.45, -3.1);
+    for (const [c, x, y, z, s] of [[0xff2020, -4.55, -0.04, 1.64, 0.4], [0x20ff40, 4.55, -0.04, 1.64, 0.4], [0xffffff, 0, 1.09, 5.55, 0.3]]) {
+      const sp = light(c, x, y, z, s);
+      keep.add(sp);
+    }
+    if (cockpitView) m.setCockpitView(true);
+  }).catch((err) => console.warn('FlightGear F-16 model not loaded, using the simple model:', err));
+
   return {
     object: root,
     cockpit,
     panelCanvas,
     panelTex,
-    eye: new THREE.Vector3(0, 0.9, -4.75),
-    setLights(night) {
-      landingLight.visible = night;
-      landingGlow.visible = night;
+    eye,
+    get detailed() { return !!fg; },
+    setLights(n) {
+      night = n;
+      landingLight.visible = n;
+      landingGlow.visible = n;
     },
     setCockpitView(on) {
+      cockpitView = on;
       cockpit.visible = on;
+      if (fg) { fg.setCockpitView(on); return; }
       cabin.visible = !on;
       cabinFront.visible = !on;
       canopy.visible = !on;
@@ -262,6 +295,29 @@ export function createF16Model() {
     },
     update(ac, dt) {
       t += dt;
+      const c = ac.controls;
+      if (fg) {
+        fg.update(ac);
+        // The landing light is on the nose gear: only with the gear down.
+        landingLight.visible = landingGlow.visible = night && (ac.gearDown ?? 1) > 0.9;
+      } else updatePrimitive(ac, dt);
+      // Afterburner flame.
+      const ab = ac.abLit ? ac.ab ?? 0 : 0;
+      const flick = 0.9 + Math.sin(t * 60) * 0.06 + Math.sin(t * 37) * 0.04;
+      flame.scale.set(0.9 + ab * 0.2, 0.9 + ab * 0.2, (1.5 + ab * 4) * flick);
+      flameMat.opacity = ab > 0.01 ? 0.35 + ab * 0.45 : 0;
+      core.scale.set(1, 1, (1 + ab * 2.2) * flick);
+      coreMat.opacity = ab > 0.01 ? 0.5 : 0;
+      exhaustGlow.material.opacity = ab > 0.01 ? 0.6 + ab * 0.4 : Math.max(0, ((ac.n2 ?? 0) - 0.9) * 2);
+      beacon.visible = (t % 1.0) < 0.1;
+      // Cockpit controls.
+      stick.rotation.x = -c.elevator * 0.25;
+      stick.rotation.z = -c.aileron * 0.25;
+      thrGrip.position.z = -4.8 - c.throttle * 0.12;
+    },
+  };
+
+  function updatePrimitive(ac, dt) {
       const c = ac.controls;
       // Control surfaces follow the stick (the FCS moves them; this is a visual approximation).
       const pitchCmd = Math.max(-1, Math.min(1, c.elevator + (ac.trim ?? 0)));
@@ -279,21 +335,7 @@ export function createF16Model() {
         l.pivot.visible = gd > 0.03;
         if (ac.onGround) l.wheel.rotation.x -= (ac.speed / l.r) * dt;
       }
-      // Nozzle and afterburner flame.
-      const ab = ac.abLit ? ac.ab ?? 0 : 0;
       const noz = ac.nozzle ?? 0;
       nozzle.scale.set(0.9 + noz * 0.15, 0.9 + noz * 0.15, 1);
-      const flick = 0.9 + Math.sin(t * 60) * 0.06 + Math.sin(t * 37) * 0.04;
-      flame.scale.set(0.9 + ab * 0.2, 0.9 + ab * 0.2, (1.5 + ab * 4) * flick);
-      flameMat.opacity = ab > 0.01 ? 0.35 + ab * 0.45 : 0;
-      core.scale.set(1, 1, (1 + ab * 2.2) * flick);
-      coreMat.opacity = ab > 0.01 ? 0.5 : 0;
-      exhaustGlow.material.opacity = ab > 0.01 ? 0.6 + ab * 0.4 : Math.max(0, ((ac.n2 ?? 0) - 0.9) * 2);
-      beacon.visible = (t % 1.0) < 0.1;
-      // Cockpit controls.
-      stick.rotation.x = -c.elevator * 0.25;
-      stick.rotation.z = -c.aileron * 0.25;
-      thrGrip.position.z = -4.8 - c.throttle * 0.12;
-    },
-  };
+  }
 }

@@ -38,7 +38,7 @@ document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.2, 60000);
 
-const sky = createSky(scene);
+const sky = createSky(scene, renderer);
 sky.setShadows(!low);
 const world = buildWorld(scene, renderer, sky.env, settings.quality);
 
@@ -48,7 +48,7 @@ weather.randomise();
 
 // Both aircraft are built up front; only the selected one is shown.
 const TYPES = { skylark: SKYLARK, f16: F16 };
-const MODELS = { skylark: createAircraftModel(), f16: createF16Model() };
+const MODELS = { skylark: createAircraftModel(), f16: createF16Model({ renderer }) };
 for (const m of Object.values(MODELS)) { scene.add(m.object); m.object.visible = false; }
 if (!TYPES[settings.aircraft]) settings.aircraft = 'skylark';
 const aircraft = new Aircraft(TYPES[settings.aircraft]);

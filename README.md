@@ -70,6 +70,14 @@ Checked performance from the test scripts:
 | Approach | 13° AoA at ≈150 KCAS | 13° AoA, 140–160 KCAS |
 | Landing roll without drag chute | ≈1,000 m | 760–1,070 m |
 
+**3D model:** the F-16 is the detailed model from the open-source
+[FlightGear F-16](https://github.com/NikolaiVChr/f16), with its textures, markings, wingtip AIM-9Ls and
+GE nozzle. Its gear, gear doors, stabilators, flaperons, leading-edge flaps, rudder, speedbrakes and
+nozzle petals are animated from the simulation. The game reads the AC3D model files directly and
+re-implements the FlightGear animations it needs (`js/acloader.js`, `js/model-f16fg.js`). The gear and
+collision points were matched to this model. If the model can't be loaded, a simple built-in model is
+shown instead.
+
 The jet has an F-16-style **HUD** (airspeed and altitude tapes, heading, G, Mach, AoA, pitch ladder,
 flight-path marker, the landing AoA bracket, and AOA / OVERSPEED / PULL UP / BINGO warnings), an engine
 and systems strip in the outside views, and a cockpit with two live MFDs and a side-stick. Sustained high G
@@ -202,6 +210,20 @@ gauges are drawn live on the 3D instrument panel, and a green HUD adds a pitch l
 tape and speed/altitude boxes. The top-left readout shows indicated and ground speed, altitudes, vertical speed,
 angle of attack, G-load and wind. A minimap sits top-right and N opens the full island map.
 
+## Graphics
+
+- Image-based lighting: the sky is rendered into an environment map, so paint, metal and glass reflect
+  the sky and the ground. It updates when the time of day or the weather changes.
+- Terrain ambient occlusion darkens valleys and gullies, and the mountains get more relief.
+- Sun shadows, ACES tone mapping, a water shader, sprite clouds and an overcast deck.
+
+## Credits and licences
+
+- **F-16 3D model, textures and AIM-9L:** from the FlightGear F-16 by Erik Hofman, Nikolai V. Chr. and
+  contributors, under the GNU General Public License v2 or later. See
+  [`assets/f16/NOTICE.md`](assets/f16/NOTICE.md), `assets/f16/LICENSE` and `assets/f16/authors.txt`.
+- **Everything else** in this repository was written for this project.
+
 ## How it works
 
 | File | What it does |
@@ -210,7 +232,9 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/planes/f16.js` | The F-16: mass and inertia, Mach-dependent aerodynamics, the F110 engine model with spool-up, afterburner and fuel, and the fly-by-wire control laws. |
 | `js/planes/skylark.js` | The light trainer's aerodynamics, propeller engine and direct control surfaces. |
 | `js/atmosphere.js` | International Standard Atmosphere, Mach number and calibrated airspeed. |
-| `js/model-f16.js` | The F-16 3D model: moving stabilators, flaperons and rudder, speedbrakes, retracting gear, afterburner plume, wingtip AIM-9s, landing light and cockpit. |
+| `js/acloader.js` | Loader for AC3D (`.ac`) models, the format FlightGear uses, keeping named parts for animation. |
+| `js/model-f16fg.js` | Loads the FlightGear F-16 and animates its gear, control surfaces, speedbrakes and nozzle from the flight state. |
+| `js/model-f16.js` | The F-16 wrapper: cockpit interior, afterburner flame and lights, plus the simple fallback model. Its parts: moving stabilators, flaperons and rudder, speedbrakes, retracting gear, afterburner plume, wingtip AIM-9s, landing light and cockpit. |
 | `js/nav.js` | The ILS: localizer, glideslope and DME for both runway ends. |
 | `js/tanker.js` | The refuelling tanker: racetrack flight path, model, boom, contact envelope, director cues and fuel transfer. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |

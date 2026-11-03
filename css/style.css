@@ -86,3 +86,5 @@ details summary { cursor: pointer; color: #ffcf6a; font-family: "Saira Condensed
 .panel { width: min(760px, 100%); }
 
 #gfx { position: fixed; inset: 0; pointer-events: none; }
+
+.credits a { color: #9fc4ea; }

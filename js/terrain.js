@@ -254,7 +254,16 @@ function buildTerrainMesh() {
       const snowT = smoothstep(1050, 1250, h + n1 * 150) * smoothstep(0.55, 0.75, up);
       c.lerp(snow, snowT);
     }
-    col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b;
+    // Cheap ambient occlusion: compare with the average height around (about 190 m radius).
+    const gi = Math.floor(v / VERTS), gj = v % VERTS;
+    let sum = 0, cnt = 0;
+    for (let di = -3; di <= 3; di += 3) for (let dj = -3; dj <= 3; dj += 3) {
+      const ii = Math.min(VERTS - 1, Math.max(0, gi + di)), jj = Math.min(VERTS - 1, Math.max(0, gj + dj));
+      sum += heights[ii * VERTS + jj]; cnt++;
+    }
+    const rel = h - sum / cnt;
+    const ao = h < 0 ? 1 : clamp(1 + rel / 160, 0.72, 1.08);
+    col[v * 3] = c.r * ao; col[v * 3 + 1] = c.g * ao; col[v * 3 + 2] = c.b * ao;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
 

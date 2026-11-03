@@ -12,7 +12,7 @@ const R = 7300;                    // turn radius for about 30° of bank
 const HALF = 9000;                 // half length of the straight legs
 const CENTRE = new THREE.Vector3(0, TANKER_ALT, 1500);
 const BOOM_PIVOT = new THREE.Vector3(0, -2.0, 15.5);   // tanker body frame (-Z forward)
-const RECEPTACLE = new THREE.Vector3(0, 0.85, -2.4);   // F-16 body frame, on the spine behind the canopy
+const RECEPTACLE = new THREE.Vector3(0, 0.82, -2.0);   // F-16 body frame, on the spine behind the canopy
 const IDEAL = { elev: 30, az: 0, r: 15 };
 const TRANSFER = 7.5;              // kg/s (about 1,000 lb/min)
 

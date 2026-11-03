@@ -16,7 +16,7 @@ const PRESETS = {
 };
 export const TIMES_OF_DAY = Object.keys(PRESETS);
 
-export function createSky(scene) {
+export function createSky(scene, renderer) {
   const env = {
     sunDir: new THREE.Vector3(0, 1, 0),
     sunColor: new THREE.Color(),
@@ -35,6 +35,7 @@ export function createSky(scene) {
       horizon: { value: env.horizon }, zenith: { value: env.zenith },
       sunDir: { value: env.sunDir }, sunColor: { value: env.sunColor }, stars: { value: 0 },
       hazeColor: { value: new THREE.Color() }, haze: { value: 0 },
+      groundColor: { value: new THREE.Color(0.12, 0.14, 0.1) }, envMode: { value: 0 },
     },
     vertexShader: /* glsl */`
       varying vec3 vDir;
@@ -44,8 +45,8 @@ export function createSky(scene) {
         gl_Position = p.xyww;
       }`,
     fragmentShader: /* glsl */`
-      uniform vec3 horizon, zenith, sunDir, sunColor, hazeColor;
-      uniform float stars, haze;
+      uniform vec3 horizon, zenith, sunDir, sunColor, hazeColor, groundColor;
+      uniform float stars, haze, envMode;
       varying vec3 vDir;
       float hash(vec3 p) {
         p = fract(p * 0.3183099 + 0.1);
@@ -72,7 +73,7 @@ export function createSky(scene) {
             col += vec3(0.9, 0.93, 1.0) * b * stars * smoothstep(0.0, 0.2, d.y);
           }
         }
-        if (d.y < 0.0) col = mix(col, horizon * 0.82, min(-d.y * 5.0, 1.0));
+        if (d.y < 0.0) col = mix(col, envMode > 0.5 ? groundColor : horizon * 0.82, min(-d.y * (envMode > 0.5 ? 8.0 : 5.0), 1.0));
         // Under an overcast, inside cloud or in fog the sky is a flat grey.
         col = mix(col, hazeColor * (0.92 + 0.08 * up), haze);
         gl_FragColor = vec4(col, 1.0);
@@ -87,6 +88,32 @@ export function createSky(scene) {
 
   const hemi = new THREE.HemisphereLight();
   scene.add(hemi);
+
+  // ---------- Image-based lighting ----------
+  // A blurred copy of the current sky (with dark ground below the horizon) used as the
+  // environment map, so metal, paint and glass pick up realistic reflections.
+  const pmrem = renderer ? new THREE.PMREMGenerator(renderer) : null;
+  const envScene = new THREE.Scene();
+  const envMat = domeMat.clone();
+  envMat.uniforms.envMode.value = 1;
+  const envDome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), envMat);
+  envDome.frustumCulled = false;
+  envScene.add(envDome);
+  let envRT = null, envHaze = -1, envTimer = 0;
+  function updateEnvironment() {
+    if (!pmrem) return;
+    for (const k of ['horizon', 'zenith', 'sunDir', 'sunColor', 'hazeColor']) envMat.uniforms[k].value.copy(domeMat.uniforms[k].value);
+    envMat.uniforms.haze.value = domeMat.uniforms.haze.value;
+    envMat.uniforms.stars.value = 0;
+    // Ground seen from the air: dark green-grey, scaled by the overall light level.
+    const lum = env.horizon.r * 0.3 + env.horizon.g * 0.55 + env.horizon.b * 0.15;
+    envMat.uniforms.groundColor.value.setRGB(0.16 * lum + 0.02, 0.19 * lum + 0.02, 0.13 * lum + 0.02);
+    const rt = pmrem.fromScene(envScene, 0.04, 0.1, 100);
+    if (envRT) envRT.dispose();
+    envRT = rt;
+    scene.environment = rt.texture;
+    envHaze = domeMat.uniforms.haze.value;
+  }
 
   const sun = new THREE.DirectionalLight();
   sun.castShadow = true;
@@ -134,6 +161,7 @@ export function createSky(scene) {
     base.sunI = p.sunI; base.hemiI = p.hemiI; base.fog = p.fog; base.hemiSky.set(p.hemiSky);
     env.night = !!p.night;
     domeMat.uniforms.stars.value = p.night ? 1.2 : 0;
+    envHaze = -1; // regenerate the environment map on the next update
   }
 
   return {
@@ -147,6 +175,7 @@ export function createSky(scene) {
       const layer = LAYERS[mode];
       deckBottom.visible = deckTop.visible = !!layer;
       if (layer) { deckBottom.position.y = layer[0]; deckTop.position.y = layer[1]; }
+      envHaze = -1;
     },
     get cloudMode() { return cloudMode; },
     update(camera, focus) {
@@ -190,6 +219,9 @@ export function createSky(scene) {
       scene.background.copy(env.horizon);
       scene.fog.near = fogNear;
       scene.fog.far = fogFar;
+      // Refresh the reflections when the light has changed noticeably (at most twice a second).
+      envTimer -= 1 / 60;
+      if (envHaze < 0 || (Math.abs(haze - envHaze) > 0.2 && envTimer <= 0)) { updateEnvironment(); envTimer = 0.5; }
       sun.target.position.copy(focus);
       sun.position.copy(focus).addScaledVector(env.sunDir, 300);
     },
