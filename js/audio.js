@@ -3,6 +3,8 @@
 let ctx = null;
 let master, engineA, engineB, engineFilter, engineGain, windGain, windFilter, hornGain, rumbleGain;
 let muted = false;
+let volume = 0.5;
+let warnGain;
 
 function noiseBuffer(seconds = 2) {
   const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
@@ -25,7 +27,7 @@ export function startAudio() {
   if (!AC) return;
   ctx = new AC();
   master = ctx.createGain();
-  master.gain.value = muted ? 0 : 0.5;
+  master.gain.value = muted ? 0 : volume;
   master.connect(ctx.destination);
 
   // Engine: two detuned oscillators through a low-pass filter.
@@ -62,11 +64,42 @@ export function startAudio() {
   hornGain = ctx.createGain(); hornGain.gain.value = 0;
   horn.connect(hornGain).connect(master);
   horn.start();
+
+  // Overspeed warble.
+  const warn = ctx.createOscillator();
+  warn.type = 'triangle'; warn.frequency.value = 900;
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 6;
+  const lfoGain = ctx.createGain(); lfoGain.gain.value = 250;
+  lfo.connect(lfoGain).connect(warn.frequency);
+  warnGain = ctx.createGain(); warnGain.gain.value = 0;
+  warn.connect(warnGain).connect(master);
+  warn.start(); lfo.start();
+}
+
+export function setVolume(v) {
+  volume = v;
+  if (master && !muted) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
+}
+
+// Short sequence of beeps, e.g. for ring passes and autopilot changes.
+export function playChime(freqs, dur = 0.12, type = 'sine', level = 0.18) {
+  if (!ctx) return;
+  freqs.forEach((f, i) => {
+    const o = ctx.createOscillator();
+    o.type = type; o.frequency.value = f;
+    const g = ctx.createGain();
+    const t = ctx.currentTime + i * dur;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.95);
+    o.connect(g).connect(master);
+    o.start(t); o.stop(t + dur);
+  });
 }
 
 export function toggleMute() {
   muted = !muted;
-  if (master) master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.05);
+  if (master) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.05);
   return muted;
 }
 
@@ -86,7 +119,8 @@ export function updateAudio(ac) {
   engineFilter.frequency.setTargetAtTime(250 + ac.controls.throttle * 900, t, 0.1);
   engineGain.gain.setTargetAtTime(alive ? 0.12 + ac.controls.throttle * 0.18 : 0, t, 0.1);
 
-  const s = ac.speed;
+  warnGain.gain.setTargetAtTime(alive && ac.limitWarning ? 0.05 : 0, t, 0.05);
+  const s = ac.tas ?? ac.speed;
   windFilter.frequency.setTargetAtTime(300 + s * 18, t, 0.2);
   windGain.gain.setTargetAtTime(alive ? Math.min(0.35, (s / 70) ** 2 * 0.3) : 0, t, 0.2);
   rumbleGain.gain.setTargetAtTime(alive && ac.onGround ? Math.min(0.5, s / 30) * 0.6 : 0, t, 0.05);

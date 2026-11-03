@@ -39,3 +39,41 @@ button:hover { background: #2f4c6b; border-color: #7aa3cc; }
 #keys td:first-child { color: #ffcf6a; white-space: nowrap; width: 40%; }
 .tip { color: #8aa0b6; font-size: 13px; margin-bottom: 0; }
 #crashReason { font-size: 18px; }
+
+h3 { font-family: "Saira Condensed", sans-serif; font-size: 20px; color: #ffcf6a; margin: 6px 0 8px; letter-spacing: 0.04em; }
+#scenarios { margin: 0; }
+.settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 16px; margin-bottom: 14px; }
+.settings label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #a9bdd2; }
+.settings label.check { flex-direction: row; align-items: center; gap: 8px; }
+select, input[type=range] { font: inherit; font-size: 14px; color: #fff; background: #23384f; border: 1px solid #4b6b8c; border-radius: 5px; padding: 6px; }
+input[type=range] { padding: 0; accent-color: #ffb21a; }
+details summary { cursor: pointer; color: #ffcf6a; font-family: "Saira Condensed", sans-serif; font-size: 20px; margin: 4px 0 8px; }
+
+/* ---------- Touch controls ---------- */
+#touch { position: fixed; inset: 0; pointer-events: none; user-select: none; -webkit-user-select: none; }
+#touch > * { pointer-events: auto; touch-action: none; }
+#tStick {
+  position: absolute; left: max(18px, env(safe-area-inset-left)); bottom: 18px; width: 150px; height: 150px; border-radius: 50%;
+  background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.35);
+}
+#tKnob {
+  position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%;
+  background: rgba(255,255,255,0.35); border: 2px solid rgba(255,255,255,0.7);
+}
+#tRudder { position: absolute; left: calc(max(18px, env(safe-area-inset-left)) + 162px); bottom: 18px; display: flex; flex-direction: column; gap: 6px; }
+#tRudder button { width: 64px; }
+#tThrottle {
+  position: absolute; right: max(18px, env(safe-area-inset-right)); bottom: 18px; width: 56px; height: 170px; border-radius: 10px;
+  background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.35);
+}
+#tThrottle span { position: absolute; top: -20px; width: 100%; text-align: center; font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000; }
+#tThrKnob { position: absolute; left: 4px; right: 4px; height: 28px; bottom: -14px; border-radius: 6px; background: rgba(255,178,26,0.8); }
+#tButtons {
+  position: absolute; right: calc(max(18px, env(safe-area-inset-right)) + 70px); bottom: 18px;
+  display: grid; grid-template-columns: repeat(2, 72px); gap: 6px;
+}
+#touch button {
+  font-size: 12px; padding: 9px 4px; text-align: center; border-radius: 8px;
+  background: rgba(20,30,45,0.55); border: 1px solid rgba(255,255,255,0.35);
+}
+#touch button.on { background: rgba(255,178,26,0.6); }

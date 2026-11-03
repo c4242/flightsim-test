@@ -20,13 +20,12 @@ export function createAircraftModel() {
     return m;
   };
 
-  // Fuselage: a lathe around the longitudinal axis.
-  const profile = [
-    [0.0, -3.55], [0.32, -3.5], [0.52, -3.2], [0.6, -2.6], [0.64, -1.6], [0.65, -0.6],
-    [0.6, 0.6], [0.47, 2.0], [0.3, 3.4], [0.18, 4.4], [0.0, 4.55],
-  ].map(([r, y]) => new THREE.Vector2(r, y));
-  const fuseGeo = new THREE.LatheGeometry(profile, 24).rotateX(Math.PI / 2).scale(1, 1.12, 1);
-  add(fuseGeo, white);
+  // Fuselage: a lathe around the longitudinal axis, in two parts so the cabin section
+  // can be hidden in the cockpit view while the nose stays visible over the panel.
+  const lathe = (pts) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 24)
+    .rotateX(Math.PI / 2).scale(1, 1.12, 1);
+  add(lathe([[0.0, -3.55], [0.32, -3.5], [0.52, -3.2], [0.6, -2.6], [0.64, -1.6], [0.645, -1.35]]), white);
+  const cabin = add(lathe([[0.645, -1.35], [0.65, -0.6], [0.6, 0.6], [0.47, 2.0], [0.3, 3.4], [0.18, 4.4], [0.0, 4.55]]), white);
   // Cowling ring and spinner.
   add(new THREE.CylinderGeometry(0.34, 0.5, 0.25, 20).rotateX(Math.PI / 2).translate(0, 0, -3.45), dark);
   add(new THREE.ConeGeometry(0.2, 0.45, 16).rotateX(-Math.PI / 2).translate(0, 0, -3.75), stripe);
@@ -129,12 +128,103 @@ export function createAircraftModel() {
   disc.position.z = -3.6;
   root.add(disc);
 
+  // Navigation lights (red left, green right, white tail) and flashing strobes / beacon.
+  const glowTex = (() => {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 32;
+    const g = cv.getContext('2d');
+    const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.3, 'rgba(255,255,255,0.6)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 32, 32);
+    return new THREE.CanvasTexture(cv);
+  })();
+  const light = (color, x, y, z, size) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    sp.position.set(x, y, z);
+    sp.scale.set(size, size, 1);
+    root.add(sp);
+    return sp;
+  };
+  light(0xff2020, -5.45, -0.12, 0.0, 0.45);
+  light(0x20ff40, 5.45, -0.12, 0.0, 0.45);
+  light(0xffffff, 0, 0.1, 4.6, 0.35);
+  const strobes = [light(0xffffff, -5.45, -0.1, 0.3, 1.0), light(0xffffff, 5.45, -0.1, 0.3, 1.0)];
+  const beacon = light(0xff3010, 0, 1.55, 4.2, 1.0);
+
+  // ---------- Cockpit interior (only shown in the cockpit view) ----------
+  const cockpit = new THREE.Group();
+  cockpit.visible = false;
+  root.add(cockpit);
+  const trim = new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.85 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.9 });
+  const cAdd = (geo, mat, x, y, z) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    cockpit.add(m);
+    return m;
+  };
+  const panelCanvas = document.createElement('canvas');
+  panelCanvas.width = 1024; panelCanvas.height = 352;
+  const panelTex = new THREE.CanvasTexture(panelCanvas);
+  panelTex.colorSpace = THREE.SRGBColorSpace;
+  panelTex.anisotropy = 4;
+  const panel = cAdd(new THREE.PlaneGeometry(1.16, 0.4), new THREE.MeshBasicMaterial({ map: panelTex, toneMapped: false }), 0, 0.5, -1.1);
+  panel.rotation.x = -0.22;
+  cAdd(new THREE.BoxGeometry(1.26, 0.46, 0.3), black, 0, 0.47, -1.34);          // panel housing
+  const shield = cAdd(new THREE.BoxGeometry(1.24, 0.05, 0.36), black, 0, 0.72, -1.2); // glare shield
+  shield.rotation.x = 0.06;
+  for (const sx of [-1, 1]) {
+    cAdd(new THREE.BoxGeometry(0.08, 0.06, 1.7), trim, sx * 0.6, 0.62, -0.45);   // sills
+    cAdd(new THREE.BoxGeometry(0.03, 0.62, 1.8), trim, sx * 0.63, 0.3, -0.45);   // side walls
+  }
+  cAdd(new THREE.BoxGeometry(1.24, 0.03, 1.8), black, 0, 0.0, -0.45);            // floor
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.6 });
+  const hoop = cAdd(new THREE.TorusGeometry(0.56, 0.025, 6, 24, Math.PI), frameMat, 0, 0.45, -0.1);
+  hoop.scale.y = 1.0;
+  // Control yoke.
+  const yoke = new THREE.Group();
+  yoke.position.set(-0.3, 0.27, -0.92);
+  cockpit.add(yoke);
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.3, 8).rotateX(Math.PI / 2), metal);
+  shaft.position.z = -0.15;
+  yoke.add(shaft);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.035, 0.035), black);
+  yoke.add(bar);
+  for (const sx of [-1, 1]) {
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.1, 0.04), black);
+    grip.position.set(sx * 0.15, 0.04, 0);
+    yoke.add(grip);
+  }
+  // Throttle knob between the seats.
+  const throttleKnob = cAdd(new THREE.SphereGeometry(0.022, 10, 8), new THREE.MeshStandardMaterial({ color: 0x111111 }), 0, 0.33, -0.95);
+
   let propAngle = 0;
+  let t = 0;
 
   return {
     object: root,
+    cockpit,
+    setCockpitView(on) {
+      cockpit.visible = on;
+      cabin.visible = !on;
+      canopy.visible = !on;
+    },
+    panelCanvas,
+    panelTex,
     update(ac, dt) {
       const c = ac.controls;
+      t += dt;
+      const flash = (t % 1.2) < 0.06 || ((t + 0.15) % 1.2) < 0.05;
+      for (const sp of strobes) sp.visible = flash;
+      beacon.visible = (t % 1.0) < 0.12;
+      yoke.position.z = -0.92 + Math.max(-1, Math.min(1, c.elevator)) * 0.06;
+      yoke.rotation.z = -c.aileron * 0.6;
+      throttleKnob.position.z = -0.95 - c.throttle * 0.08;
       for (const a of ailerons) {
         // Positive rotation about X moves a trailing edge down.
         if (a.flap) a.hinge.rotation.x = [0, 15, 30][ac.flaps] * Math.PI / 180;
