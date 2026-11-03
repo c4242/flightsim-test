@@ -84,3 +84,5 @@ details summary { cursor: pointer; color: #ffcf6a; font-family: "Saira Condensed
 .stars { color: #ffcf3a; letter-spacing: 2px; white-space: nowrap; }
 .bigstars { color: #ffcf3a; font-size: 34px; letter-spacing: 6px; min-height: 0; }
 .panel { width: min(760px, 100%); }
+
+#gfx { position: fixed; inset: 0; pointer-events: none; }

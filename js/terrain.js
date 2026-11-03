@@ -26,8 +26,8 @@ function makeField(def) {
 }
 
 export const AIRFIELDS = [
-  makeField({ id: 'main', name: 'Skyhaven', x: 0, z: 0, heading: 0, length: 1400, width: 30,
-    elevation: 25, numbers: ['36', '18'], papiDist: 300, margin: 110, approachLights: true }),
+  makeField({ id: 'main', name: 'Skyhaven', x: 0, z: 0, heading: 0, length: 2400, width: 45,
+    elevation: 25, numbers: ['36', '18'], papiDist: 330, margin: 130, approachLights: true }),
   makeField({ id: 'east', name: 'Eastfield', x: 4750, z: 4250, heading: 100 * Math.PI / 180, length: 850, width: 20,
     elevation: 116, numbers: ['10', '28'], papiDist: 180, margin: 70, approachLights: false }),
 ];
@@ -70,6 +70,9 @@ function rawHeight(x, z) {
     const t = smoothstep(0, 450, Math.hypot(da, dc));
     h = lerp(f.elevation, h, t);
   }
+  // Deepen the open sea (the coastline is unchanged) so the sea floor never shows through the
+  // water surface at long range, where depth-buffer precision runs out.
+  if (h < -8) h = -8 + (h + 8) * 4;
   return h;
 }
 
@@ -82,7 +85,7 @@ for (let i = 0; i < VERTS; i++) {
 export function terrainHeight(x, z) {
   const gx = (x + HALF) / CELL;
   const gz = (z + HALF) / CELL;
-  if (gx < 0 || gz < 0 || gx >= CELLS || gz >= CELLS) return -45;
+  if (gx < 0 || gz < 0 || gx >= CELLS || gz >= CELLS) return -156;
   const j = Math.floor(gx), i = Math.floor(gz);
   const fx = gx - j, fz = gz - i;
   const ha = heights[i * VERTS + j];
@@ -329,6 +332,8 @@ function buildSea(env) {
         vec3 sky = mix(horizon, zenith, pow(R.y, 0.55));
         float depth = texture2D(depthMap, (vW.xz + ${HALF.toFixed(1)}) / ${WORLD_SIZE.toFixed(1)}).r * 25.5;
         if (abs(vW.x) > ${HALF.toFixed(1)} || abs(vW.z) > ${HALF.toFixed(1)}) depth = 25.5;
+        // Over land the terrain covers the sea anyway; skipping it there avoids depth fighting at range.
+        else if (depth < 0.03) discard;
         vec3 water = mix(shallow, deep, smoothstep(0.0, 14.0, depth));
         float light = 0.3 + 0.7 * max(sunDir.y, 0.0);
         vec3 col = mix(water * light * (sunColor * 0.4 + 0.6), sky, fres * 0.8);

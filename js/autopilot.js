@@ -30,6 +30,7 @@ export class Autopilot {
       this.altitude = Math.max(60, this.altitude - intent.pitch * 6 * dt);
     }
     const c = ac.controls;
+    if (ac.type?.kind === 'jet') { this.updateJet(ac, dt); return; }
     // Lateral: bank towards the heading bug, coordinate with rudder.
     const hdgErr = wrapPi(this.heading - ac.heading);
     const bankTarget = clamp(hdgErr * 1.3, -0.44, 0.44);
@@ -43,5 +44,21 @@ export class Autopilot {
     this.integ = clamp(this.integ + vsErr * 0.03 * dt, -0.4, 0.4);
     c.elevator = clamp((0.09 * vsErr + this.integ) * (vsErr > 0 ? slow : 1)
       - 0.35 * ac.omega.x + 0.25 * (1 / Math.max(0.7, Math.cos(ac.roll)) - 1) - ac.trim, -0.7, 0.7);
+  }
+
+  // Fly-by-wire jet: the stick commands G and roll rate, so the autopilot works in those terms.
+  updateJet(ac, dt) {
+    const c = ac.controls;
+    const hdgErr = wrapPi(this.heading - ac.heading);
+    const bankTarget = clamp(hdgErr * 1.5, -0.52, 0.52);
+    c.aileron = clamp((bankTarget - ac.roll) * 0.8, -0.5, 0.5);
+    c.rudder = 0;
+    const vsTarget = clamp((this.altitude - ac.altitude) * 0.1, -30, 30);
+    const vsErr = vsTarget - ac.vel.y;
+    this.integ = clamp(this.integ + vsErr * 0.002 * dt, -0.2, 0.2);
+    // Load factor to hold the turn level plus a correction towards the target climb rate.
+    const nz = 1 / Math.max(0.6, Math.cos(ac.roll)) + vsErr * 0.025 + this.integ;
+    const stick = nz >= 1 ? (nz - 1) / 8 : (nz - 1) / 4;
+    c.elevator = clamp(stick - ac.trim * 0.25, -0.3, 0.4);
   }
 }

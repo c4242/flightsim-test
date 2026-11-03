@@ -3,6 +3,9 @@ import { buildWorld, terrainHeight, AIRFIELDS, fieldToWorld, runwayAt } from './
 import { createSky, TIMES_OF_DAY } from './sky.js';
 import { Aircraft, MS_TO_KT } from './aircraft.js';
 import { createAircraftModel } from './model.js';
+import { createF16Model } from './model-f16.js';
+import { SKYLARK } from './planes/skylark.js';
+import { F16 } from './planes/f16.js';
 import { initInput, initTouch, updateControls, consumePresses, getLook, KEYMAP, setInputOptions } from './input.js';
 import { createHud } from './hud.js';
 import { startAudio, updateAudio, toggleMute, setPaused, playThump, playCrash, playChime, setVolume } from './audio.js';
@@ -41,13 +44,41 @@ const weather = new Weather();
 weather.set(settings.wind);
 weather.randomise();
 
-const aircraft = new Aircraft();
-const model = createAircraftModel();
-scene.add(model.object);
+// Both aircraft are built up front; only the selected one is shown.
+const TYPES = { skylark: SKYLARK, f16: F16 };
+const MODELS = { skylark: createAircraftModel(), f16: createF16Model() };
+for (const m of Object.values(MODELS)) { scene.add(m.object); m.object.visible = false; }
+if (!TYPES[settings.aircraft]) settings.aircraft = 'skylark';
+const aircraft = new Aircraft(TYPES[settings.aircraft]);
+let model = MODELS[settings.aircraft];
+model.object.visible = true;
+const kind = () => aircraft.type.kind;
+
+function selectAircraft(id) {
+  settings.aircraft = id;
+  saveSettings(settings);
+  aircraft.setType(TYPES[id]);
+  model.setCockpitView(false);
+  model.object.visible = false;
+  model = MODELS[id];
+  model.object.visible = true;
+  renderScenarioList();
+  renderMissionList();
+  updateTouchLabels();
+}
+
+// The two flap buttons become gear and speedbrake buttons in the jet.
+function updateTouchLabels() {
+  const down = document.getElementById('tFlapDown'), up = document.getElementById('tFlapUp');
+  const jet = kind() === 'jet';
+  down.textContent = jet ? 'GEAR' : 'FLAP ▼';
+  up.textContent = jet ? 'SPD BRK' : 'FLAP ▲';
+  up.dataset.key = jet ? 'KeyX' : 'KeyT';
+}
 
 function applyTime(name) {
   sky.setTimeOfDay(name);
-  model.setLights(sky.env.night);
+  for (const m of Object.values(MODELS)) m.setLights(sky.env.night);
   traffic?.model.setLights(sky.env.night);
 }
 const effects = new Effects(scene);
@@ -86,7 +117,7 @@ const cockpitTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const towers = [
-  new THREE.Vector3(130, AIRFIELDS[0].elevation + 22, 240),
+  new THREE.Vector3(AIRFIELDS[0].width / 2 + 115, AIRFIELDS[0].elevation + 22, 240),
   fieldToWorld(AIRFIELDS[1], -30, 100, AIRFIELDS[1].elevation + 12),
 ];
 const flybyPos = new THREE.Vector3();
@@ -103,7 +134,7 @@ function placeFlyby() {
   if (dir.lengthSq() < 1) dir.set(0, 0, -1).applyQuaternion(subject.quat);
   dir.normalize();
   const side = new THREE.Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(Math.random() < 0.5 ? -22 : 22);
-  flybyPos.copy(subject.pos).addScaledVector(dir, Math.max(120, subject.speed * 4)).add(side);
+  flybyPos.copy(subject.pos).addScaledVector(dir, Math.min(420, Math.max(120, subject.speed * 3))).add(side);
   flybyPos.y += 4 + Math.random() * 8;
   flybyPos.y = Math.max(flybyPos.y, Math.max(0, terrainHeight(flybyPos.x, flybyPos.z)) + 2);
   flybyAge = 0;
@@ -119,7 +150,7 @@ function updateCamera(dt) {
 
   if (cameraMode === 'cockpit') {
     fov = 74;
-    camera.position.copy(_v.set(0, 0.88, -0.45).applyQuaternion(aircraft.quat).add(aircraft.pos));
+    camera.position.copy(_v.copy(model.eye).applyQuaternion(aircraft.quat).add(aircraft.pos));
     camera.quaternion.copy(aircraft.quat).multiply(cockpitTilt).multiply(lookQuat);
   } else if (cameraMode === 'tower') {
     let best = towers[0];
@@ -138,7 +169,7 @@ function updateCamera(dt) {
   } else {
     if (!aircraft.crashed) chaseQuat.slerp(aircraft.quat, 1 - Math.exp(-dt * 4));
     _q.copy(chaseQuat).multiply(lookQuat).multiply(tilt);
-    camera.position.copy(_v.set(0, 2.2, 14).applyQuaternion(_q).add(aircraft.pos));
+    camera.position.copy((kind() === 'jet' ? _v.set(0, 3.4, 24) : _v.set(0, 2.2, 14)).applyQuaternion(_q).add(aircraft.pos));
     camera.quaternion.copy(_q);
     const ground = Math.max(0, terrainHeight(camera.position.x, camera.position.z)) + 1;
     if (camera.position.y < ground) camera.position.y = ground;
@@ -156,22 +187,29 @@ function updateCamera(dt) {
     }
   }
   shake *= Math.exp(-dt * 6);
-  if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  // A close near plane is only needed inside the cockpit; elsewhere a farther one keeps depth precision.
+  const near = cameraMode === 'cockpit' ? 0.2 : 0.6;
+  if (Math.abs(camera.fov - fov) > 0.01 || camera.near !== near) { camera.fov = fov; camera.near = near; camera.updateProjectionMatrix(); }
 }
 
 // ---------- Menus ----------
 const menu = document.getElementById('menu');
 const resultBox = document.getElementById('result');
 document.getElementById('keys').innerHTML = KEYMAP.map(([k, d]) => `<tr><td>${k}</td><td>${d}</td></tr>`).join('');
-document.getElementById('scenarios').innerHTML = Object.entries(SCENARIOS)
-  .map(([id, s]) => `<button data-spawn="${id}">${s.label}</button>`).join('');
+function renderScenarioList() {
+  document.getElementById('scenarios').innerHTML = Object.entries(SCENARIOS)
+    .filter(([, s]) => !s.aircraft || s.aircraft.includes(kind()))
+    .map(([id, s]) => `<button data-spawn="${id}">${s.label}</button>`).join('');
+}
 function renderMissionList() {
-  document.getElementById('missions').innerHTML = MISSIONS.map((m) => {
+  document.getElementById('missions').innerHTML = MISSIONS.filter((m) => m.aircraft.includes(kind())).map((m) => {
     const st = missions.stars[m.id] ?? 0;
     return `<button data-spawn="mission:${m.id}"><span>${m.title}</span><span class="stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span></button>`;
   }).join('');
 }
+renderScenarioList();
 renderMissionList();
+updateTouchLabels();
 let paused = true;
 let started = false;
 
@@ -180,6 +218,16 @@ function fillSelect(id, values, current, label = (v) => v[0].toUpperCase() + v.s
   el.innerHTML = values.map((v) => `<option value="${v}" ${v === current ? 'selected' : ''}>${label(v)}</option>`).join('');
   return el;
 }
+fillSelect('setAircraft', Object.keys(TYPES), settings.aircraft, (v) => TYPES[v].name).addEventListener('change', (e) => {
+  selectAircraft(e.target.value);
+  missions.stop();
+  rings.stop();
+  autopilot.disengage();
+  hud.clearMessages();
+  started = false;
+  showMenu(true);
+  spawnPreview();
+});
 fillSelect('setTime', TIMES_OF_DAY, settings.timeOfDay).addEventListener('change', (e) => {
   settings.timeOfDay = e.target.value; saveSettings(settings);
   if (!missions.mission?.time) applyTime(settings.timeOfDay);
@@ -235,7 +283,7 @@ function spawn(id) {
     missions.start(m);
     weather.set(m.wind[0], m.wind[1]);
     applyTime(m.time ?? settings.timeOfDay);
-    aircraft.reset(m.spawn());
+    aircraft.reset(m.spawn(kind()));
     hint = `Mission: ${m.title}`;
   } else {
     missions.stop();
@@ -243,14 +291,14 @@ function spawn(id) {
     weather.randomise();
     applyTime(settings.timeOfDay);
     if (id === 'rings') {
-      aircraft.reset(rings.spawn());
+      aircraft.reset(rings.spawn(kind()));
       rings.start();
     } else {
       rings.stop();
-      aircraft.reset(SCENARIOS[id].spawn());
+      aircraft.reset(SCENARIOS[id].spawn(kind()));
     }
     const sc = SCENARIOS[id];
-    hint = (isTouch && sc.touchHint) || sc.hint;
+    hint = (kind() === 'jet' && sc.jetHint) || (isTouch && sc.touchHint) || sc.hint;
   }
   subject = aircraft;
   snapCamera();
@@ -326,9 +374,19 @@ function handlePresses() {
       snapCamera();
       if (cameraMode === 'flyby') placeFlyby();
       hud.message(`Camera: ${cameraMode}`, '#fff', 1.5);
+    } else if (code === 'KeyG' && kind() === 'jet') {
+      if (aircraft.onGround && aircraft.gearHandle) hud.message('Gear handle locked: weight on wheels', '#fc6', 2);
+      else {
+        aircraft.gearHandle = !aircraft.gearHandle;
+        playChime([aircraft.gearHandle ? 520 : 700], 0.12, 'triangle', 0.1);
+        hud.message(aircraft.gearHandle ? 'Gear down' : 'Gear up', '#7cf', 1.5);
+      }
+    } else if (code === 'KeyX' && kind() === 'jet') {
+      aircraft.speedbrakeCmd = !aircraft.speedbrakeCmd;
+      hud.message(aircraft.speedbrakeCmd ? 'Speedbrakes out' : 'Speedbrakes in', '#7cf', 1.5);
     } else if (code === 'KeyG') {
       if (aircraft.flaps < 2) { aircraft.flaps++; hud.message(`Flaps ${[0, 15, 30][aircraft.flaps]}°`, '#7cf', 1.5); }
-    } else if (code === 'KeyT') {
+    } else if (code === 'KeyT' && kind() !== 'jet') {
       if (aircraft.flaps > 0) { aircraft.flaps--; hud.message(`Flaps ${[0, 15, 30][aircraft.flaps]}°`, '#7cf', 1.5); }
     } else if (code === 'KeyZ') {
       toggleAutopilot();
@@ -344,7 +402,7 @@ function handlePresses() {
 
 const _gear = new THREE.Vector3();
 const ZERO = new THREE.Vector3();
-function gearWorld(x, z) { return _gear.set(x, -1.35, z).applyQuaternion(aircraft.quat).add(aircraft.pos); }
+function gearWorld(i) { return _gear.copy(aircraft.type.gear[i].p).applyQuaternion(aircraft.quat).add(aircraft.pos); }
 
 function handleEvents() {
   for (const e of aircraft.events) {
@@ -357,8 +415,8 @@ function handleEvents() {
       playThump(0.2 + fpm / 800);
       shake += 0.004 + fpm / 60000;
       const strength = clamp(aircraft.speed / 40, 0, 1);
-      effects.tyreSmoke(gearWorld(-1.3, 0.3), strength);
-      effects.tyreSmoke(gearWorld(1.3, 0.3), strength);
+      effects.tyreSmoke(gearWorld(1), strength);
+      effects.tyreSmoke(gearWorld(2), strength);
     } else if (e.type === 'liftoff') {
       if (!announcedLiftoff) hud.message('Airborne', '#cfe8ff', 2);
       announcedLiftoff = true;
@@ -404,15 +462,54 @@ function updateParticles(dt) {
   if (aircraft.crashed) return;
   // Dust when rolling fast on grass.
   if (aircraft.onGround && aircraft.speed > 6 && !runwayAt(aircraft.pos.x, aircraft.pos.z) && Math.random() < dt * 25) {
-    effects.dust(gearWorld(Math.random() < 0.5 ? -1.3 : 1.3, 0.6));
+    effects.dust(gearWorld(Math.random() < 0.5 ? 1 : 2));
   }
   // Wingtip vapour when pulling hard in humid air.
   if (!aircraft.onGround && aircraft.gLoad > 3 && aircraft.speed > 45) {
-    for (const sx of [-5.4, 5.4]) {
+    const tip = kind() === 'jet' ? 4.98 : 5.4;
+    for (const sx of [-tip, tip]) {
       _v.set(sx, -0.1, 0.4).applyQuaternion(aircraft.quat).add(aircraft.pos);
       effects.vapour(_v, ZERO);
     }
+    // Strake vortices on the jet at high AoA.
+    if (kind() === 'jet' && aircraft.alpha > 0.25) {
+      for (const sx of [-1.0, 1.0]) {
+        _v.set(sx, 0.1, -2.6 + Math.random() * 3).applyQuaternion(aircraft.quat).add(aircraft.pos);
+        effects.vapour(_v, ZERO);
+      }
+    }
   }
+  // Transonic shock collar (vapour cone) in humid air at low level.
+  if (kind() === 'jet' && aircraft.mach > 0.95 && aircraft.mach < 1.05 && aircraft.altitude < 3000 && Math.random() < 0.8) {
+    for (let i = 0; i < 6; i++) {
+      const a = Math.random() * Math.PI * 2;
+      _v.set(Math.cos(a) * 1.6, 0.2 + Math.sin(a) * 1.3, 0.5 + Math.random()).applyQuaternion(aircraft.quat).add(aircraft.pos);
+      effects.vapour(_v, ZERO);
+    }
+  }
+}
+
+// ---------- Pilot physiology and ground-collision warning ----------
+// Sustained G drains blood from the head: first the edges of vision grey out, then it blacks out.
+// Negative G gives a red-out. This is a simple model of a pilot in a G-suit doing straining manoeuvres.
+const gfx = document.getElementById('gfx');
+let gStress = 0;
+function updatePilot(dt) {
+  const g = aircraft.crashed ? 1 : aircraft.gLoad;
+  if (g > 5.5) gStress += (g - 5.5) * 0.12 * dt;
+  else gStress -= (0.35 + (5.5 - Math.max(g, 1)) * 0.06) * dt;
+  if (g < -2) gStress -= 0; // handled as red-out below
+  gStress = clamp(gStress, 0, 1.4);
+  const grey = clamp((gStress - 0.25) / 0.9, 0, 1);
+  const red = clamp((-g - 2) / 2, 0, 0.8);
+  if (grey > 0.01) {
+    gfx.style.background = `radial-gradient(ellipse at center, rgba(0,0,0,${grey * 0.3}) ${Math.round(45 - grey * 40)}%, rgba(0,0,0,${0.35 + grey * 0.62}) 100%)`;
+  } else if (red > 0.01) {
+    gfx.style.background = `radial-gradient(ellipse at center, rgba(170,0,0,${red * 0.4}) 30%, rgba(120,0,0,${red}) 100%)`;
+  } else gfx.style.background = 'none';
+  // Ground-collision warning: descending towards the terrain with less than ~5 s to impact.
+  const sink = -aircraft.vel.y;
+  aircraft.gcas = !aircraft.onGround && !aircraft.crashed && aircraft.gearDown < 0.5 && sink > 8 && aircraft.agl / sink < 5;
 }
 
 // ---------- Main loop ----------
@@ -446,7 +543,8 @@ function frame(now) {
     }
     if (steps === 24) acc = 0;
     traffic.update(dt);
-    if (!aircraft.crashed && aircraft.pos.distanceTo(traffic.pos) < 7) aircraft.crash('Mid-air collision with other traffic');
+    updatePilot(dt);
+    if (!aircraft.crashed && aircraft.pos.distanceTo(traffic.pos) < (kind() === 'jet' ? 9 : 7)) aircraft.crash('Mid-air collision with other traffic');
     handleEvents();
     handleMission(dt);
     const r = rings.update(aircraft, dt);
@@ -485,8 +583,12 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-aircraft.reset(SCENARIOS.runway.spawn());
-snapCamera();
+function spawnPreview() {
+  aircraft.reset(SCENARIOS.runway.spawn(kind()));
+  subject = aircraft;
+  snapCamera();
+}
+spawnPreview();
 showMenu(true);
 requestAnimationFrame(frame);
 

@@ -4,6 +4,7 @@ const KEY = 'skyhaven.settings';
 const isTouch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
 export const DEFAULTS = {
+  aircraft: 'skylark',
   quality: isTouch ? 'low' : 'high',
   timeOfDay: 'noon',
   wind: 'light',

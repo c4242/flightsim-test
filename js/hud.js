@@ -434,6 +434,11 @@ export function createHud(canvas) {
       ['G', ac.gLoad.toFixed(1)],
       ['WIND', windSpd < 0.5 ? 'calm' : `${String(Math.round(windFrom)).padStart(3, '0')}° ${Math.round(windSpd * MS_TO_KT)} kt`],
     ];
+    if (ac.type?.kind === 'jet') {
+      rows[0] = ['KCAS', `${Math.round(kt)} kt`];
+      rows.splice(1, 0, ['MACH', ac.mach.toFixed(2)]);
+      rows.push(['FUEL', `${Math.round(ac.fuel * 2.20462 / 10) * 10} lb`]);
+    }
     if (ap?.on) rows.push(['A/P', `${String(Math.round(ap.heading * DEG) % 360).padStart(3, '0')}° ${Math.round(ap.altitude * M_TO_FT / 10) * 10} ft`]);
     if (extra) rows.push(...extra);
     const lh = compact ? 15 : 18;
@@ -447,7 +452,7 @@ export function createHud(canvas) {
     });
     // Wind arrow relative to the nose.
     if (windSpd >= 0.5) {
-      const ax = x + (compact ? 125 : 150), ay = y + 8 * lh + lh / 2;
+      const ax = x + (compact ? 125 : 150), ay = y + rows.findIndex((r) => r[0] === 'WIND') * lh + lh / 2;
       const rel = Math.atan2(wind.x, -wind.z) - ac.heading; // direction the wind blows towards, relative to nose
       g.save();
       g.translate(ax, ay);
@@ -630,12 +635,15 @@ export function createHud(canvas) {
   function objectivesPanel(m) {
     const mission = m.mission;
     const fs = compact ? 12 : 13;
-    const w = compact ? Math.min(330, W * 0.42) : 330;
+    const w = compact ? Math.min(330, W * 0.42) : m.time < 14 ? 330 : 260;
     const x = compact ? W / 2 - w / 2 : 8, y = compact ? 8 : 230;
     g.font = `${fs}px ${FONT}`;
     // Show the briefing for the first few seconds of the mission.
     const brief = m.time < 14 && m.state === 'active' ? wrap(mission.brief, w - 24) : [];
-    const items = mission.objectives.flatMap((o, i) => {
+    // After the briefing, collapse to the current objective to keep the view clear.
+    const collapsed = !brief.length && m.state === 'active';
+    const items = mission.objectives.filter((o, i) => !collapsed || i === m.index).flatMap((o) => {
+      const i = mission.objectives.indexOf(o);
       const done = i < m.index || m.state === 'complete';
       const mark = done ? '✓' : i === m.index ? '▸' : '·';
       const col = done ? '#8fd18f' : i === m.index ? '#ffcf6a' : '#9aa8b8';
@@ -672,12 +680,234 @@ export function createHud(canvas) {
 
   let mapTarget = null;
 
+
+  // ================= F-16 style HUD =================
+  const HUDC = '#56ff86';
+  const kgToLb = 2.20462;
+  // Turbine inlet temperature estimate for the engine gauges.
+  const ftit = (ac) => Math.round(ac.engineFailed || ac.fuel <= 0 ? 200 + ac.n2 * 300 : 420 + Math.pow(Math.max(0, ac.n2 - 0.68) / 0.32, 1.4) * 450 + (ac.abLit ? 40 : 0));
+
+  function jetHud(ac, camera, conformal, warnings) {
+    g.save();
+    g.strokeStyle = HUDC; g.fillStyle = HUDC; g.lineWidth = 1.6;
+    g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 3;
+    const cx = W / 2, cy = conformal ? H * 0.4 : H * 0.42;
+    const pxPerRad = H / (2 * Math.tan((camera.fov * Math.PI / 180) / 2));
+    // ---- Flight path marker and boresight ----
+    let fx, fy;
+    if (conformal) {
+      _d.copy(ac.vel).normalize().multiplyScalar(1000).add(camera.position);
+      const s = project(camera, _d);
+      fx = s.x; fy = s.y;
+      _d.set(0, 0, -1000).applyQuaternion(ac.quat).add(camera.position);
+      const b = project(camera, _d);
+      if (!b.behind) { g.beginPath(); g.moveTo(b.x - 9, b.y); g.lineTo(b.x + 9, b.y); g.moveTo(b.x, b.y - 9); g.lineTo(b.x, b.y + 9); g.stroke(); }
+    } else {
+      fx = cx - ac.beta * pxPerRad * 0.6;
+      fy = cy + ac.alpha * pxPerRad * 0.6;
+      g.beginPath(); g.moveTo(cx - 9, cy); g.lineTo(cx + 9, cy); g.moveTo(cx, cy - 9); g.lineTo(cx, cy + 9); g.stroke();
+    }
+    if (ac.speed > 10 && fx > 0 && fy > 0 && fx < W && fy < H) {
+      g.beginPath(); g.arc(fx, fy, 7, 0, Math.PI * 2);
+      g.moveTo(fx - 20, fy); g.lineTo(fx - 7, fy); g.moveTo(fx + 7, fy); g.lineTo(fx + 20, fy);
+      g.moveTo(fx, fy - 7); g.lineTo(fx, fy - 15);
+      g.stroke();
+      // Landing AoA bracket (gear down): FPM centred in the bracket = 13° on-speed AoA.
+      if (ac.gearDown > 0.5 && !ac.onGround) {
+        const by = fy + (13 - ac.alpha * DEG) * 5;
+        g.beginPath();
+        g.moveTo(fx - 28, by - 12); g.lineTo(fx - 34, by - 12); g.lineTo(fx - 34, by + 12); g.lineTo(fx - 28, by + 12);
+        g.stroke();
+      }
+    }
+    // ---- Pitch ladder (conformal only) ----
+    if (conformal) {
+      g.save();
+      g.beginPath(); g.rect(cx - 260, 50, 520, H * 0.62); g.clip();
+      g.font = `12px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      const h = ac.heading;
+      for (let p = -85; p <= 85; p += 5) {
+        const pr = p / DEG;
+        _d.set(Math.sin(h) * Math.cos(pr), Math.sin(pr), -Math.cos(h) * Math.cos(pr)).multiplyScalar(1000).add(camera.position);
+        const s = project(camera, _d);
+        if (s.behind) continue;
+        g.save();
+        g.translate(s.x, s.y);
+        g.rotate(-ac.roll);
+        g.beginPath();
+        if (p === 0) {
+          g.moveTo(-200, 0); g.lineTo(-30, 0); g.moveTo(30, 0); g.lineTo(200, 0);
+        } else {
+          const tip = p > 0 ? 8 : -8;
+          if (p < 0) g.setLineDash([7, 5]);
+          // Lines bend towards the horizon more steeply the further from it.
+          const bend = p * 0.25;
+          g.moveTo(-70, tip + bend * 0); g.lineTo(-70, 0); g.lineTo(-28, -bend * 0.5);
+          g.moveTo(28, -bend * 0.5); g.lineTo(70, 0); g.lineTo(70, tip);
+        }
+        g.stroke();
+        g.setLineDash([]);
+        if (p) { g.fillText(String(Math.abs(p)), -86, 0); g.fillText(String(Math.abs(p)), 86, 0); }
+        g.restore();
+      }
+      g.restore();
+    }
+    // ---- Heading tape ----
+    g.font = `13px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const deg = ac.heading * DEG, ty = conformal ? 62 : 70;
+    for (let d = Math.ceil((deg - 25) / 5) * 5; d <= deg + 25; d += 5) {
+      const xx = cx + (d - deg) * 7;
+      g.beginPath(); g.moveTo(xx, ty); g.lineTo(xx, ty + (d % 10 === 0 ? 9 : 5)); g.stroke();
+      if (d % 10 === 0) g.fillText(String(((Math.round(d / 10) % 36) + 36) % 36).padStart(2, '0'), xx, ty + 20);
+    }
+    g.beginPath(); g.moveTo(cx, ty - 2); g.lineTo(cx - 5, ty - 9); g.lineTo(cx + 5, ty - 9); g.closePath(); g.fill();
+    // ---- Airspeed tape (KCAS) ----
+    const kcas = ac.ias * MS_TO_KT;
+    const ax = cx - 230;
+    g.save();
+    g.beginPath(); g.rect(ax - 60, cy - 110, 80, 220); g.clip();
+    for (let v = Math.floor((kcas - 40) / 10) * 10; v <= kcas + 40; v += 10) {
+      if (v < 0) continue;
+      const yy = cy + (kcas - v) * 2.6;
+      g.beginPath(); g.moveTo(ax + 8, yy); g.lineTo(ax + (v % 50 === 0 ? -4 : 2), yy); g.stroke();
+      if (v % 50 === 0) { g.textAlign = 'right'; g.fillText(String(v), ax - 8, yy); }
+    }
+    g.restore();
+    g.clearRect(ax - 62, cy - 12, 58, 24);
+    g.strokeRect(ax - 62, cy - 12, 58, 24);
+    g.textAlign = 'right'; g.font = `bold 15px ${FONT}`;
+    g.fillText(String(Math.round(kcas)), ax - 8, cy + 1);
+    g.font = `14px ${FONT}`; g.textAlign = 'left';
+    g.fillText(`${ac.gLoad.toFixed(1)}`, ax - 62, cy - 132);
+    g.fillText(`M ${ac.mach.toFixed(2)}`, ax - 62, cy + 128);
+    g.fillText(`α ${(ac.alpha * DEG).toFixed(1)}`, ax - 62, cy + 148);
+    g.fillText(ac.fcsMode === 'TO/L' ? 'T/O-L' : 'NAV', ax - 62, cy + 168);
+    if (ac.abLit) g.fillText('AB', ax - 62, cy + 188);
+    // ---- Altitude tape ----
+    const alt = ac.altitude * M_TO_FT;
+    const bx = cx + 230;
+    g.save();
+    g.beginPath(); g.rect(bx - 20, cy - 110, 110, 220); g.clip();
+    g.font = `13px ${FONT}`;
+    for (let v = Math.floor((alt - 450) / 100) * 100; v <= alt + 450; v += 100) {
+      const yy = cy + (alt - v) * 0.24;
+      g.beginPath(); g.moveTo(bx - 8, yy); g.lineTo(bx + (v % 500 === 0 ? 4 : -2), yy); g.stroke();
+      if (v % 500 === 0) { g.textAlign = 'left'; g.fillText(String(v), bx + 8, yy); }
+    }
+    g.restore();
+    g.clearRect(bx + 4, cy - 12, 74, 24);
+    g.strokeRect(bx + 4, cy - 12, 74, 24);
+    g.textAlign = 'left'; g.font = `bold 15px ${FONT}`;
+    g.fillText(String(Math.round(alt / 10) * 10), bx + 9, cy + 1);
+    g.font = `14px ${FONT}`;
+    if (ac.agl * M_TO_FT < 5000) g.fillText(`R ${String(Math.max(0, Math.round(ac.agl * M_TO_FT / 10) * 10)).padStart(4, '0')}`, bx + 4, cy + 128);
+    g.fillText(`${Math.round(ac.vel.y * 196.85 / 100) * 100}`, bx + 4, cy - 128);
+    // ---- Warnings ----
+    const flash = Math.floor(performance.now() / 300) % 2 === 0;
+    g.font = `bold 20px ${FONT}`; g.textAlign = 'center';
+    warnings.forEach((w, i) => { if (flash || w.steady) g.fillText(w.text, cx, cy + 92 + i * 26); });
+    g.restore();
+  }
+
+  function jetWarnings(ac) {
+    const out = [];
+    if (ac.gcas) out.push({ text: 'PULL UP' });
+    if (ac.stalling) out.push({ text: 'AOA' });
+    if (ac.overspeed) out.push({ text: 'OVERSPEED' });
+    else if (ac.limitWarning) out.push({ text: 'OVER G' });
+    if (ac.fuel <= 0 || ac.engineFailed) out.push({ text: 'ENGINE', steady: true });
+    else if (ac.fuel < 700) out.push({ text: 'BINGO', steady: true });
+    if (!ac.onGround && ac.gearDown > 0 && ac.ias > 150) out.push({ text: 'GEAR SPEED' });
+    return out;
+  }
+
+  // Engine and systems strip shown at the bottom in the external views.
+  function jetStrip(ac) {
+    const w = Math.min(W - 20, 760), h = 74;
+    const x0 = (W - w) / 2, y0 = H - h - 12;
+    g.fillStyle = 'rgba(14,16,20,0.82)';
+    g.beginPath(); g.roundRect(x0, y0, w, h, 10); g.fill();
+    const cell = (i, label, value, color = '#e8eef5', frac = null) => {
+      const cw = w / 8, x = x0 + cw * i + cw / 2;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = '#8fa3b8'; g.font = `11px ${FONT}`; g.fillText(label, x, y0 + 16);
+      g.fillStyle = color; g.font = `bold 18px ${FONT}`; g.fillText(value, x, y0 + 40);
+      if (frac !== null) {
+        g.fillStyle = '#333a42'; g.fillRect(x - cw * 0.35, y0 + 56, cw * 0.7, 5);
+        g.fillStyle = color; g.fillRect(x - cw * 0.35, y0 + 56, cw * 0.7 * Math.max(0, Math.min(1, frac)), 5);
+      }
+    };
+    const thr = ac.controls.throttle;
+    cell(0, 'THROTTLE', thr > 0.8 ? `AB ${Math.round((thr - 0.8) / 0.2 * 100)}%` : thr > 0.79 ? 'MIL' : `${Math.round(thr / 0.8 * 100)}%`, thr > 0.8 ? '#ffb347' : '#e8eef5', thr);
+    cell(1, 'RPM %', `${Math.round(ac.n2 * 100)}`, ac.n2 > 1.0 ? '#ffb347' : '#e8eef5', (ac.n2 - 0.6) / 0.45);
+    cell(2, 'NOZ %', `${Math.round(ac.nozzle * 100)}`, '#e8eef5', ac.nozzle);
+    cell(3, 'FTIT °C', `${ftit(ac)}`, ftit(ac) > 900 ? '#ffb347' : '#e8eef5', (ftit(ac) - 300) / 700);
+    cell(4, 'FUEL FLOW', `${Math.round(ac.fuelFlow / 100) * 100}`, '#e8eef5', ac.fuelFlow / 60000);
+    const fuelLb = ac.fuel * kgToLb;
+    cell(5, 'FUEL LB', `${Math.round(fuelLb / 10) * 10}`, fuelLb < 1500 ? '#ff6a4d' : '#e8eef5', fuelLb / 7000);
+    // Gear: three greens when down and locked, red while moving.
+    const gx = x0 + (w / 8) * 6.5, gy = y0 + 40;
+    g.fillStyle = '#8fa3b8'; g.font = `11px ${FONT}`; g.fillText('GEAR', gx, y0 + 16);
+    const gc = ac.gearDown >= 0.999 ? '#3dff6e' : ac.gearDown > 0 ? '#ff4040' : '#2a2f36';
+    for (const [dx, dy] of [[0, -6], [-12, 8], [12, 8]]) { g.fillStyle = gc; g.beginPath(); g.arc(gx + dx, gy + dy, 5, 0, 7); g.fill(); }
+    const sbx = x0 + (w / 8) * 7.5;
+    g.fillStyle = '#8fa3b8'; g.fillText('SPD BRK', sbx, y0 + 16);
+    g.fillStyle = ac.speedbrake > 0.02 ? '#ffd23a' : '#2a2f36';
+    g.font = `bold 15px ${FONT}`; g.fillText(ac.speedbrake > 0.02 ? `${Math.round(ac.speedbrake * 60)}°` : 'IN', sbx, y0 + 40);
+  }
+
+  // Cockpit instrument panel for the F-16: engine MFD, attitude/heading MFD and annunciators.
+  function drawJetPanelTexture(cv, ac) {
+    const prev = g;
+    g = cv.getContext('2d');
+    const w = cv.width, h = cv.height;
+    g.fillStyle = '#25282c'; g.fillRect(0, 0, w, h);
+    const mfd = (x, y, s) => {
+      g.fillStyle = '#3a3e44'; g.fillRect(x - 14, y - 14, s + 28, s + 28);
+      g.fillStyle = '#05080a'; g.fillRect(x, y, s, s);
+      g.fillStyle = '#6b7178';
+      for (let i = 0; i < 5; i++) { g.fillRect(x + s * (0.1 + i * 0.2) - 9, y - 12, 18, 8); g.fillRect(x + s * (0.1 + i * 0.2) - 9, y + s + 4, 18, 8); }
+    };
+    const S = 300, ly = 70;
+    mfd(70, ly, S);
+    mfd(w - 70 - S, ly, S);
+    // Left MFD: engine page.
+    g.fillStyle = '#56ff86'; g.font = `bold 26px ${FONT}`; g.textAlign = 'left'; g.textBaseline = 'top';
+    const rows = [
+      ['RPM', `${Math.round(ac.n2 * 100)} %`], ['NOZ', `${Math.round(ac.nozzle * 100)} %`], ['FTIT', `${ftit(ac)} C`],
+      ['FF', `${Math.round(ac.fuelFlow / 100) * 100}`], ['FUEL', `${Math.round(ac.fuel * kgToLb / 10) * 10}`],
+      ['THR', ac.abLit ? `AB ${Math.round(ac.ab * 100)}` : `${Math.round(Math.min(1, ac.controls.throttle / 0.8) * 100)} %`],
+    ];
+    rows.forEach(([k, v], i) => { g.fillStyle = '#7fe0a0'; g.fillText(k, 88, ly + 18 + i * 44); g.fillStyle = '#ffffff'; g.fillText(v, 200, ly + 18 + i * 44); });
+    // Right MFD: attitude and heading.
+    attitude(w - 70 - S / 2, ly + S * 0.32, S * 0.26, ac.pitch, ac.roll);
+    headingIndicator(w - 70 - S / 2, ly + S * 0.76, S * 0.2, ac.heading, null);
+    // Centre: annunciators and gear lights.
+    const cxp = w / 2;
+    const lamp = (y, text, on, color) => {
+      g.fillStyle = on ? color : '#191c20'; g.fillRect(cxp - 70, y, 140, 34);
+      g.fillStyle = on ? '#000' : '#4a5058'; g.font = `bold 18px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(text, cxp, y + 17);
+    };
+    const flash = Math.floor(performance.now() / 300) % 2 === 0;
+    lamp(70, 'MASTER CAUTION', (ac.fuel < 700 || ac.engineFailed || ac.limitWarning) && flash, '#ffb21a');
+    lamp(112, 'AOA', ac.stalling, '#ff3b30');
+    lamp(154, 'AB', ac.abLit, '#ffb347');
+    lamp(196, 'SPD BRK', ac.speedbrake > 0.02, '#ffd23a');
+    lamp(238, ac.fcsMode === 'TO/L' ? 'T/O-L GAINS' : 'CRUISE GAINS', true, '#7fe0a0');
+    const gc = ac.gearDown >= 0.999 ? '#3dff6e' : ac.gearDown > 0 ? '#ff4040' : '#191c20';
+    for (const [dx, dy] of [[0, 300], [-30, 330], [30, 330]]) { g.fillStyle = gc; g.beginPath(); g.arc(cxp + dx, dy, 13, 0, 7); g.fill(); }
+    g = prev;
+  }
+
   function draw(ac, camera, cameraMode, dt, { wind, ap, rings, mission, replay }) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     if (replay) { replayBanner(replay); return; }
 
-    if (cameraMode === 'cockpit' && showPanel) cockpitHud(ac, camera);
+    const jet = ac.type?.kind === 'jet';
+    if (jet && showPanel) jetHud(ac, camera, cameraMode === 'cockpit', jetWarnings(ac));
+    else if (cameraMode === 'cockpit' && showPanel) cockpitHud(ac, camera);
     if (rings?.active) { guide(ac, camera, rings.next, '#3dff7a'); ringStatus(rings); }
     mapTarget = mission?.active ? mission.target : null;
     if (mapTarget) guide(ac, camera, mapTarget, '#ffb21a');
@@ -685,7 +915,8 @@ export function createHud(canvas) {
     readouts(ac, 16, 16, wind, ap);
     if (!compact) drawMinimap(ac, rings, W - 100, 100, 84);
 
-    if (showPanel && cameraMode !== 'cockpit') {
+    if (jet && showPanel && cameraMode !== 'cockpit') jetStrip(ac);
+    else if (showPanel && cameraMode !== 'cockpit') {
       const R = Math.max(30, Math.min(72, W / 18, H / 9.5));
       const used = sixPack(0, 0, R, ac, ap, true);
       const px = Math.max(10, (W - used) / 2);
@@ -722,7 +953,7 @@ export function createHud(canvas) {
   return {
     draw,
     message,
-    drawPanelTexture,
+    drawPanelTexture(cv, ac, ap) { if (ac.type?.kind === 'jet') drawJetPanelTexture(cv, ac); else drawPanelTexture(cv, ac, ap); },
     showLanding(e, aim) { landing = { e, aim, t: 7 }; },
     togglePanel() { showPanel = !showPanel; },
     toggleMap() { showMap = !showMap; return showMap; },

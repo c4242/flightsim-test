@@ -60,12 +60,13 @@ export class RingCourse {
     try { this.best = Number(localStorage.getItem('skyhaven.ringsBest')) || null; } catch { /* storage unavailable */ }
   }
 
-  spawn() {
+  spawn(kind = 'prop') {
     const a = this.points[0], b = this.points[1];
     const back = new THREE.Vector3().subVectors(a, b).setY(0).normalize();
     const start = a.clone().addScaledVector(back, 1500);
     start.y = Math.max(a.y + 40, terrainMaxAround(start.x, start.z, 300) + 100);
     const heading = Math.atan2(-back.x, back.z);
+    if (kind === 'jet') return { x: start.x, y: start.y + 60, z: start.z, heading, speed: 150, pitch: 0.05, gamma: -0.02, throttle: 0.7, gearUp: true };
     return { x: start.x, y: start.y, z: start.z, heading, speed: 55, pitch: 0.0, gamma: -0.02, flaps: 0, throttle: 0.7 };
   }
 

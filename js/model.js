@@ -218,6 +218,7 @@ export function createAircraftModel({ stripeColor = 0xc8322a, cockpitInterior = 
 
   return {
     object: root,
+    eye: new THREE.Vector3(0, 0.88, -0.45),
     cockpit,
     setLights(night) {
       landingLight.visible = night;

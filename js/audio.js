@@ -5,6 +5,7 @@ let master, engineA, engineB, engineFilter, engineGain, windGain, windFilter, ho
 let muted = false;
 let volume = 0.5;
 let warnGain;
+let jetWhine, jetWhineGain, jetWhineFilter, jetRoarGain, jetRoarFilter, abGain, gcasGain, gcasOsc;
 
 function noiseBuffer(seconds = 2) {
   const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
@@ -74,6 +75,41 @@ export function startAudio() {
   warnGain = ctx.createGain(); warnGain.gain.value = 0;
   warn.connect(warnGain).connect(master);
   warn.start(); lfo.start();
+  buildJet();
+}
+
+function buildJet() {
+  // Turbine whine: a bright tone that rises with core RPM.
+  jetWhine = ctx.createOscillator();
+  jetWhine.type = 'sawtooth';
+  jetWhineFilter = ctx.createBiquadFilter();
+  jetWhineFilter.type = 'bandpass';
+  jetWhineFilter.Q.value = 4;
+  jetWhineGain = ctx.createGain();
+  jetWhineGain.gain.value = 0;
+  jetWhine.connect(jetWhineFilter).connect(jetWhineGain).connect(master);
+  jetWhine.start();
+  // Exhaust roar: broadband noise that grows with thrust.
+  jetRoarFilter = ctx.createBiquadFilter();
+  jetRoarFilter.type = 'lowpass';
+  jetRoarGain = ctx.createGain();
+  jetRoarGain.gain.value = 0;
+  loopNoise().connect(jetRoarFilter).connect(jetRoarGain).connect(master);
+  // Afterburner: deep, crackling rumble.
+  const abFilter = ctx.createBiquadFilter();
+  abFilter.type = 'lowpass';
+  abFilter.frequency.value = 220;
+  abGain = ctx.createGain();
+  abGain.gain.value = 0;
+  loopNoise().connect(abFilter).connect(abGain).connect(master);
+  // Ground-collision warning tone (pulsed in updateAudio).
+  gcasOsc = ctx.createOscillator();
+  gcasOsc.type = 'square';
+  gcasOsc.frequency.value = 760;
+  gcasGain = ctx.createGain();
+  gcasGain.gain.value = 0;
+  gcasOsc.connect(gcasGain).connect(master);
+  gcasOsc.start();
 }
 
 export function setVolume(v) {
@@ -112,18 +148,37 @@ export function updateAudio(ac) {
   if (!ctx) return;
   const t = ctx.currentTime;
   const alive = !ac.crashed;
+  const jet = ac.type?.kind === 'jet';
+  if (jet) {
+    const n = ac.n2 ?? 0;
+    const thrustFrac = Math.max(0, Math.min(1, ((ac.thrust ?? 0) / 80000)));
+    jetWhine.frequency.setTargetAtTime(400 + n * 1400, t, 0.1);
+    jetWhineFilter.frequency.setTargetAtTime(1200 + n * 3500, t, 0.1);
+    jetWhineGain.gain.setTargetAtTime(alive ? n * n * 0.06 : 0, t, 0.1);
+    jetRoarFilter.frequency.setTargetAtTime(300 + thrustFrac * 1800, t, 0.15);
+    jetRoarGain.gain.setTargetAtTime(alive ? 0.05 + thrustFrac * 0.35 : 0, t, 0.15);
+    abGain.gain.setTargetAtTime(alive && ac.abLit ? 0.4 + (ac.ab ?? 0) * 0.5 : 0, t, 0.2);
+    gcasGain.gain.setTargetAtTime(alive && ac.gcas && (t % 0.5) < 0.25 ? 0.06 : 0, t, 0.01);
+    engineGain.gain.setTargetAtTime(0, t, 0.05);
+  } else {
+    jetWhineGain.gain.setTargetAtTime(0, t, 0.05);
+    jetRoarGain.gain.setTargetAtTime(0, t, 0.05);
+    abGain.gain.setTargetAtTime(0, t, 0.05);
+    gcasGain.gain.setTargetAtTime(0, t, 0.05);
+  }
   // Four-cylinder, four-stroke: two firing pulses per revolution.
   const f = (ac.rpm / 60) * 2;
   engineA.frequency.setTargetAtTime(f, t, 0.05);
   engineB.frequency.setTargetAtTime(f * 0.5, t, 0.05);
   engineFilter.frequency.setTargetAtTime(250 + (ac.engineFailed ? 0 : ac.controls.throttle) * 900, t, 0.1);
   const power = ac.engineFailed ? 0 : ac.controls.throttle;
-  engineGain.gain.setTargetAtTime(alive ? (ac.engineFailed ? Math.min(0.05, ac.rpm / 20000) : 0.12 + power * 0.18) : 0, t, 0.1);
+  if (!jet) engineGain.gain.setTargetAtTime(alive ? (ac.engineFailed ? Math.min(0.05, ac.rpm / 20000) : 0.12 + power * 0.18) : 0, t, 0.1);
 
   warnGain.gain.setTargetAtTime(alive && ac.limitWarning ? 0.05 : 0, t, 0.05);
   const s = ac.tas ?? ac.speed;
   windFilter.frequency.setTargetAtTime(300 + s * 18, t, 0.2);
-  windGain.gain.setTargetAtTime(alive ? Math.min(0.35, (s / 70) ** 2 * 0.3) : 0, t, 0.2);
+  windFilter.frequency.setTargetAtTime(Math.min(4000, 300 + s * 18), t, 0.2);
+  windGain.gain.setTargetAtTime(alive ? Math.min(0.35, (s / (jet ? 160 : 70)) ** 2 * 0.3) : 0, t, 0.2);
   rumbleGain.gain.setTargetAtTime(alive && ac.onGround ? Math.min(0.5, s / 30) * 0.6 : 0, t, 0.05);
   hornGain.gain.setTargetAtTime(alive && ac.stalling ? 0.05 : 0, t, 0.03);
 }

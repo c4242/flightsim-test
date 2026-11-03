@@ -14,6 +14,7 @@
 </head>
 <body>
   <!-- The WebGL canvas is inserted before this by js/main.js -->
+  <div id="gfx"></div>
   <canvas id="hud"></canvas>
 
   <!-- Touch controls (phones / tablets) -->
@@ -24,7 +25,7 @@
     </div>
     <div id="tThrottle"><div id="tThrKnob"></div><span>THR</span></div>
     <div id="tButtons">
-      <button data-key="KeyG">FLAP ▼</button><button data-key="KeyT">FLAP ▲</button>
+      <button data-key="KeyG" id="tFlapDown">FLAP ▼</button><button data-key="KeyT" id="tFlapUp">FLAP ▲</button>
       <button data-hold="brake">BRAKE</button><button data-key="KeyZ">A/P</button>
       <button data-key="KeyC">CAM</button><button data-key="KeyN">MAP</button>
       <button data-key="KeyP">❚❚</button>
@@ -34,7 +35,7 @@
   <div id="menu" class="overlay">
     <div class="panel">
       <h1>Skyhaven <span>Flight</span></h1>
-      <p class="sub">A light-aircraft flight simulator over a procedurally generated island.</p>
+      <p class="sub">Fly a light trainer or an F-16C Fighting Falcon over a procedurally generated island.</p>
       <div class="buttons">
         <button id="resume" class="hidden">Resume</button>
       </div>
@@ -50,6 +51,7 @@
       </div>
       <h3>Settings</h3>
       <div class="settings">
+        <label>Aircraft <select id="setAircraft"></select></label>
         <label>Time of day <select id="setTime"></select></label>
         <label>Wind <select id="setWind"></select></label>
         <label>Graphics <select id="setQuality"></select></label>

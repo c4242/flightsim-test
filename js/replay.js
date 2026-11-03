@@ -16,6 +16,7 @@ export class Recorder {
       pos: new THREE.Vector3(), quat: new THREE.Quaternion(), vel: new THREE.Vector3(),
       controls: { elevator: 0, aileron: 0, rudder: 0, throttle: 0, brake: 0 },
       flaps: 0, trim: 0, rpm: 0, onGround: false, speed: 0, crashed: false, stalling: false, gLoad: 1,
+      gearDown: 1, speedbrake: 0, ab: 0, abLit: false, n2: 0, nozzle: 0,
     };
     this._q = new THREE.Quaternion();
   }
@@ -32,6 +33,7 @@ export class Recorder {
       p: ac.pos.toArray(), q: ac.quat.toArray(), v: ac.vel.toArray(),
       c: [c.elevator, c.aileron, c.rudder, c.throttle], flaps: ac.flaps, trim: ac.trim, rpm: ac.rpm,
       g: ac.onGround, gl: ac.gLoad,
+      j: [ac.gearDown ?? 1, ac.speedbrake ?? 0, ac.ab ?? 0, ac.abLit ? 1 : 0, ac.n2 ?? 0, ac.nozzle ?? 0],
     });
     if (this.frames.length > MAX_FRAMES) this.frames.shift();
   }
@@ -60,6 +62,8 @@ export class Recorder {
     s.vel.fromArray(a.v);
     [s.controls.elevator, s.controls.aileron, s.controls.rudder, s.controls.throttle] = a.c;
     s.flaps = a.flaps; s.trim = a.trim; s.rpm = a.rpm; s.onGround = a.g; s.gLoad = a.gl;
+    [s.gearDown, s.speedbrake, s.ab, s.abLit, s.n2, s.nozzle] = a.j;
+    s.abLit = !!s.abLit;
     s.speed = s.vel.length();
     return s;
   }

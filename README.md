@@ -1,7 +1,7 @@
 # Skyhaven Flight
 
-A light-aircraft flight simulator that runs in the browser. You fly a small single-engine low-wing
-plane over a procedurally generated island with two airfields, five villages, a mountain canyon, forests, farmland
+A flight simulator that runs in the browser. Fly a light single-engine trainer or an **F-16C Fighting
+Falcon** over a procedurally generated island with two airfields, five villages, a mountain canyon, forests, farmland
 and sea, with another aircraft flying circuits at the main airfield.
 
 **Play:** https://c4242.github.io/flightsim-test/
@@ -21,6 +21,63 @@ python3 -m http.server 8000
 Then open http://localhost:8000. To publish it, enable GitHub Pages for the repository (Settings → Pages →
 deploy from the `main` branch, root folder).
 
+## Aircraft
+
+Pick the aircraft in the menu (Settings → Aircraft).
+
+### Skylark (light trainer)
+A 1,100 kg, 180 hp low-wing trainer in the class of a Piper Cherokee or Cessna 172. It has
+conventional controls (the stick moves the control surfaces directly), flaps, trim and fixed landing
+gear. It stalls at about 50 kt and cruises at about 100–120 kt.
+
+### F-16C Fighting Falcon (Block 50, F110-GE-129)
+The F-16 is modelled as realistically as a browser game allows:
+
+- **Mass and inertia:** about 12.3 t with full internal fuel (7,000 lb) and two wingtip AIM-9s.
+  The moments of inertia are the published F-16 values.
+- **Engine:** the thrust tables (idle, military power and full afterburner, by altitude and Mach) of the
+  F-16 model in Stevens & Lewis, *Aircraft Control and Simulation*, scaled to the installed thrust of the
+  F110-GE-129. Core RPM spools up from idle to military power in about 4–5 s, the afterburner takes a
+  moment to light, and fuel flow follows thrust: roughly 0.7 lb/lbf/h dry and 1.9 lb/lbf/h in
+  afterburner, which is about 60,000 lb/h at full afterburner low down. When the tanks run dry the engine flames out.
+- **Aerodynamics:** the lift slope varies with Mach, strake vortex lift carries it up to about 34° AoA,
+  drag rises transonically (peaking near Mach 1.1) and wave drag applies above that. Gear, flaps and
+  speedbrakes all add drag.
+- **Atmosphere:** International Standard Atmosphere, with true Mach number and calibrated airspeed (KCAS).
+- **Flight control system (fly-by-wire):**
+  - In pitch, the side-stick commands G: neutral is 1 g, full aft 9 g, full forward −3 g. Integral
+    action trims out errors.
+  - The AoA limiter stops at 25°.
+  - Roll is a rate command of up to about 270°/s, made about the velocity vector, and sideslip is
+    suppressed automatically.
+  - With the gear handle down, the system switches to takeoff/landing gains: the stick commands pitch
+    rate, a released stick holds AoA (for the 13° approach), and AoA is limited to 20°.
+- **Limits:** 800 KCAS and Mach 2.05. The airframe fails beyond about 950 KCAS, Mach 2.25 or +11.5 g.
+  The gear is torn off well above its 300 KCAS limit. A tail strike happens at about 15° pitch on the main wheels.
+- **Ground handling:** retractable gear (with a weight-on-wheels lock), nose-wheel steering, anti-skid
+  brakes, speedbrakes and a parking brake.
+
+Checked performance from the test scripts:
+
+| | Model | Real F-16C |
+| --- | --- | --- |
+| Top speed at 36,000 ft, full afterburner | M2.03 | M2.05 |
+| Military power at sea level | M0.94 | ≈M0.92 |
+| Afterburner takeoff roll / liftoff | ≈480 m / ≈180 KCAS | ≈450 m |
+| Peak G, full aft stick | 8.96 | 9 |
+| Maximum roll rate | 269°/s | ≈270°/s |
+| Engine-out glide ratio at 200 KCAS | 6.8 | ≈7–8 |
+| Approach | 13° AoA at ≈150 KCAS | 13° AoA, 140–160 KCAS |
+| Landing roll without drag chute | ≈1,000 m | 760–1,070 m |
+
+The jet has an F-16-style **HUD** (airspeed and altitude tapes, heading, G, Mach, AoA, pitch ladder,
+flight-path marker, the landing AoA bracket, and AOA / OVERSPEED / PULL UP / BINGO warnings), an engine
+and systems strip in the outside views, and a cockpit with two live MFDs and a side-stick. Sustained high G
+greys out and then blacks out your vision, and negative G reds it out. Near the speed of sound at low level
+you get a vapour cone, and you get strake vortices at high AoA.
+
+Skyhaven's runway is 2,400 m so the F-16 can operate from it. Eastfield (850 m) is for the light aircraft only.
+
 ## Scenarios
 
 - **Take off from Skyhaven:** start at the south end of runway 36, engine idling.
@@ -39,12 +96,16 @@ next gate or destination. You earn one to three stars based on your landing scor
 
 | Mission | What you do |
 | --- | --- |
+| **F-16:** Viper familiarisation | Afterburner takeoff, gear up, climb to 10,000 ft, pull 6 G, come back and land. |
+| **F-16:** Supersonic dash | From 30,000 ft, accelerate past Mach 1.6, then descend, slow down and land. |
+| **F-16:** Canyon run | Fly fast and low through three gates up the canyon, then climb out. |
+| **F-16:** Flameout landing | Low on fuel over the field at 9,500 ft; the engine quits; spiral down and land. |
 | First flight | Take off, climb to 1,500 ft, turn south and land back at Skyhaven. |
 | Traffic circuit | Fly a left-hand circuit through crosswind, downwind, base and final gates, sharing the circuit with AI traffic, and land on 36. |
 | Cross-country to Eastfield | Fly over the village of Eastbrook and land on the short hilltop strip. |
 | Engine failure | The engine quits on the way in. Glide to a runway at about 65 kt. |
-| Strong crosswind | Land on 36 in a strong, gusty westerly. |
-| Night landing | A moonlit approach using the approach lights, the PAPI and your landing light. |
+| Strong crosswind (both aircraft) | Land on 36 in a strong, gusty westerly. |
+| Night landing (both aircraft) | A moonlit approach using the approach lights, the PAPI and your landing light. |
 
 ## Replay
 
@@ -65,9 +126,10 @@ volume and inverted pitch. They are saved in your browser. Add `?quality=low` to
 | W / S or ↑ / ↓ | Pitch: nose down / nose up (stick forward / back) |
 | A / D or ← / → | Roll left / right |
 | Q / E | Rudder; also steers the nose wheel on the ground |
-| R / F | Throttle up / down (hold) |
-| 1 … 9, 0 | Set throttle to 10 … 90 %, or 100 % |
-| G / T | Flaps down / up (0°, 15°, 30°) |
+| R / F | Throttle up / down (hold). F-16: above 80 % is the afterburner range |
+| 1 … 9, 0 | Set throttle to 10 … 90 %, or 100 % (F-16: 8 = military power, 0 = full afterburner) |
+| G / T | Light aircraft: flaps down / up (0°, 15°, 30°). F-16: **G** raises / lowers the landing gear |
+| X | F-16: speedbrakes out / in |
 | B | Wheel brakes (hold) |
 | [ / ] | Elevator trim nose down / up |
 | Z | Autopilot on / off. While it's on, the pitch and roll keys move its altitude and heading targets |
@@ -115,7 +177,11 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 
 | File | What it does |
 | --- | --- |
-| `js/aircraft.js` | Flight model: a rigid body with lift (with stall), drag (parasitic + induced, reduced in ground effect), side force, propeller thrust and slipstream, air density with altitude, control moments, static stability, damping, adverse yaw, wind-relative aerodynamics, and spring-damper landing gear with brakes, nose-wheel steering and grass vs asphalt friction. Also crash and structural-limit detection and landing scoring. Runs at 240 Hz in fixed steps. |
+| `js/aircraft.js` | Shared rigid-body flight model; the aircraft types supply the aerodynamics, engine and control laws. It covers: a rigid body with lift (with stall), drag (parasitic + induced, reduced in ground effect), side force, propeller thrust and slipstream, air density with altitude, control moments, static stability, damping, adverse yaw, wind-relative aerodynamics, and spring-damper landing gear with brakes, nose-wheel steering and grass vs asphalt friction. Also crash and structural-limit detection and landing scoring. Runs at 240 Hz in fixed steps. |
+| `js/planes/f16.js` | The F-16: mass and inertia, Mach-dependent aerodynamics, the F110 engine model with spool-up, afterburner and fuel, and the fly-by-wire control laws. |
+| `js/planes/skylark.js` | The light trainer's aerodynamics, propeller engine and direct control surfaces. |
+| `js/atmosphere.js` | International Standard Atmosphere, Mach number and calibrated airspeed. |
+| `js/model-f16.js` | The F-16 3D model: moving stabilators, flaperons and rudder, speedbrakes, retracting gear, afterburner plume, wingtip AIM-9s, landing light and cockpit. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |
 | `js/autopilot.js` | Heading and altitude hold with coordinated turns and stall protection. |
 | `js/terrain.js` | The island heightfield, terrain colours plus a multi-scale detail shader, the water shader (waves, Fresnel sky reflection, sun glint, shallow-water colour, shoreline foam), both airfields (runway markings drawn on a canvas, PAPI, approach and edge lights, hangars, tower, windsocks), villages of instanced houses with lit windows and street lights at night, and instanced trees. Trees and buildings are also registered for collision. |

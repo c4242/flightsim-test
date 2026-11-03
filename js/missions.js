@@ -14,10 +14,56 @@ const gate = (text, x, y, z, radius = 220) => ({ text, target: new THREE.Vector3
 const land = (text, id) => ({ text, land: id });
 
 const eastbrook = VILLAGES.find((v) => v.name === 'Eastbrook');
+const kcas = (ac) => ac.ias * 1.94384;
 
 export const MISSIONS = [
+  // ---------------- F-16 ----------------
   {
-    id: 'first', title: 'First flight',
+    id: 'viper-fam', aircraft: ['jet'], title: 'Viper familiarisation',
+    brief: 'Afterburner take-off from Skyhaven. Raise the gear, climb to 10,000 ft, pull a 6 G turn, then come back and land. Lower the gear (G) and fly the approach at 13° AoA.',
+    spawn: () => runwaySpawn('main', 0, 'jet'), wind: ['light', 350],
+    objectives: [
+      takeOff,
+      { text: 'Raise the landing gear (G)', done: (ac) => !ac.gearHandle && ac.gearDown === 0 },
+      { text: 'Climb through 10,000 ft', done: (ac) => ac.altitude * M_TO_FT >= 10000 },
+      { text: 'Pull a 6 G turn', done: (ac) => ac.gLoad >= 6 },
+      land('Return and land at Skyhaven, then stop', 'main'),
+    ],
+  },
+  {
+    id: 'viper-super', aircraft: ['jet'], title: 'Supersonic dash',
+    brief: 'At 30,000 ft and Mach 0.9. Go to full afterburner and accelerate past Mach 1.6, then descend, slow down and land at Skyhaven. Watch the fuel.',
+    spawn: () => ({ x: 6000, y: 9144, z: 9000, heading: -0.6, speed: 272, pitch: 0.03, throttle: 0.8, gearUp: true }),
+    wind: ['light', 320],
+    objectives: [
+      { text: 'Accelerate to Mach 1.6', done: (ac) => ac.mach >= 1.6 },
+      { text: 'Descend below 10,000 ft and slow below 300 kt', done: (ac) => ac.altitude * M_TO_FT < 10000 && kcas(ac) < 300 },
+      land('Land at Skyhaven and stop', 'main'),
+    ],
+  },
+  {
+    id: 'viper-canyon', aircraft: ['jet'], title: 'Canyon run',
+    brief: 'Low level up the northern canyon at high speed. Fly through the three gates between the mountain walls, then climb out above 10,000 ft.',
+    spawn: () => ({ x: 0, y: 300, z: 5200, heading: 0, speed: 200, pitch: 0.02, throttle: 0.75, gearUp: true }),
+    wind: ['light', 0],
+    objectives: [
+      gate('Gate 1: over the airfield', 0, 140, 0, 160),
+      gate('Gate 2: canyon entrance', 0, 150, -3000, 160),
+      gate('Gate 3: canyon exit', 0, 150, -6400, 160),
+      { text: 'Climb above 10,000 ft', done: (ac) => ac.altitude * M_TO_FT >= 10000 },
+    ],
+  },
+  {
+    id: 'viper-flameout', aircraft: ['jet'], title: 'Flameout landing',
+    brief: 'Overhead Skyhaven at 9,500 ft, low on fuel. If the engine quits, hold about 200 kt, spiral down over the field, lower the gear at the low key (about 4,000 ft) and land.',
+    spawn: () => ({ x: 600, y: 2900, z: 1800, heading: 0, speed: 118, pitch: 0.02, throttle: 0.5, gearUp: true, fuel: 400 }),
+    wind: ['calm', 0],
+    events: [{ at: 5, run: (ac) => { ac.engineFailed = true; }, msg: 'FLAMEOUT! Hold 200 kt and glide. Gear down at the low key.' }],
+    objectives: [land('Glide to a landing on a runway and stop', 'any')],
+  },
+  // ---------------- Light aircraft ----------------
+  {
+    id: 'first', aircraft: ['prop'], title: 'First flight',
     brief: 'Take off from Skyhaven, climb to 1,500 ft, turn around to the south, and land back at Skyhaven (either direction).',
     spawn: () => runwaySpawn('main', 0), wind: ['light', 350],
     objectives: [
@@ -28,7 +74,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 'circuit', title: 'Traffic circuit',
+    id: 'circuit', aircraft: ['prop'], title: 'Traffic circuit',
     brief: 'Fly a left-hand circuit at Skyhaven through the four gates (crosswind, downwind, base, final), then land on 36. Watch out for the other aircraft in the circuit.',
     spawn: () => runwaySpawn('main', 0), wind: ['light', 355],
     objectives: [
@@ -41,7 +87,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 'xc', title: 'Cross-country to Eastfield',
+    id: 'xc', aircraft: ['prop'], title: 'Cross-country to Eastfield',
     brief: 'Take off from Skyhaven, fly over the village of Eastbrook in the eastern basin, then land on the short hilltop strip at Eastfield.',
     spawn: () => runwaySpawn('main', 0), wind: ['light', 300],
     objectives: [
@@ -51,7 +97,7 @@ export const MISSIONS = [
     ],
   },
   {
-    id: 'engine', title: 'Engine failure',
+    id: 'engine', aircraft: ['prop'], title: 'Engine failure',
     brief: 'A routine flight towards Skyhaven at 1,800 ft. Be ready for anything. Glide speed is about 65 kt.',
     spawn: () => ({ x: 500, y: 550, z: 5600, heading: -0.08, speed: 48, pitch: 0.02, flaps: 0, throttle: 0.4 }),
     wind: ['light', 0],
@@ -61,13 +107,15 @@ export const MISSIONS = [
   {
     id: 'crosswind', title: 'Strong crosswind',
     brief: 'Land on runway 36 with a strong, gusty wind from the west. Bank into the wind and hold the centreline with the rudder.',
-    spawn: () => approachSpawn('main', 0), wind: ['strong', 275],
+    aircraft: ['prop', 'jet'],
+    spawn: (k) => approachSpawn('main', 0, 4000, { kind: k }), wind: ['strong', 275],
     objectives: [land('Land on runway 36 and stop', 'main')],
   },
   {
     id: 'night', title: 'Night landing',
     brief: 'A moonlit approach to Skyhaven. Follow the approach lights and the PAPI. Your landing light comes on at night.',
-    spawn: () => approachSpawn('main', 0), wind: ['calm', 0], time: 'night',
+    aircraft: ['prop', 'jet'],
+    spawn: (k) => approachSpawn('main', 0, 4000, { kind: k }), wind: ['calm', 0], time: 'night',
     objectives: [land('Land on runway 36 and stop', 'main')],
   },
 ];
