@@ -3,10 +3,10 @@
 
 import * as THREE from 'three';
 
-export function createAircraftModel() {
+export function createAircraftModel({ stripeColor = 0xc8322a, cockpitInterior = true } = {}) {
   const root = new THREE.Group();
   const white = new THREE.MeshStandardMaterial({ color: 0xf4f4f0, roughness: 0.45, metalness: 0.1 });
-  const stripe = new THREE.MeshStandardMaterial({ color: 0xc8322a, roughness: 0.5 });
+  const stripe = new THREE.MeshStandardMaterial({ color: stripeColor, roughness: 0.5 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.7 });
   const metal = new THREE.MeshStandardMaterial({ color: 0x9a9ea4, roughness: 0.35, metalness: 0.7 });
   const glass = new THREE.MeshStandardMaterial({
@@ -203,12 +203,26 @@ export function createAircraftModel() {
   // Throttle knob between the seats.
   const throttleKnob = cAdd(new THREE.SphereGeometry(0.022, 10, 8), new THREE.MeshStandardMaterial({ color: 0x111111 }), 0, 0.33, -0.95);
 
+  // Landing light in the left wing root, used at night.
+  const landingLight = new THREE.SpotLight(0xfff4e0, 60000, 700, 0.3, 0.6, 2);
+  landingLight.position.set(-1.2, -0.4, -0.6);
+  landingLight.target.position.set(-1.2, -14, -80);
+  landingLight.visible = false;
+  root.add(landingLight, landingLight.target);
+  const landingGlow = light(0xfff4e0, -1.2, -0.42, -0.75, 1.2);
+  landingGlow.visible = false;
+  if (!cockpitInterior) root.remove(cockpit);
+
   let propAngle = 0;
   let t = 0;
 
   return {
     object: root,
     cockpit,
+    setLights(night) {
+      landingLight.visible = night;
+      landingGlow.visible = night;
+    },
     setCockpitView(on) {
       cockpit.visible = on;
       cabin.visible = !on;

@@ -10,6 +10,9 @@ const PRESETS = {
     horizon: '#c6dbee', zenith: '#3b74c0', cloud: '#ffffff', fog: [3500, 40000] },
   evening: { elev: 9, az: 262, sun: '#ffb070', sunI: 2.2, hemiSky: '#c4bfdc', hemiGround: '#5a4c3e', hemiI: 0.85,
     horizon: '#f2a875', zenith: '#3a5590', cloud: '#ffd2b0', fog: [2000, 26000] },
+  // At night the "sun" is a full moon: dim, blue-white light.
+  night: { elev: 38, az: 200, sun: '#b4c6ee', sunI: 0.95, hemiSky: '#3d5486', hemiGround: '#141a24', hemiI: 0.75,
+    horizon: '#101b30', zenith: '#02050d', cloud: '#56607a', fog: [1500, 24000], night: true },
 };
 export const TIMES_OF_DAY = Object.keys(PRESETS);
 
@@ -17,6 +20,7 @@ export function createSky(scene) {
   const env = {
     sunDir: new THREE.Vector3(0, 1, 0),
     sunColor: new THREE.Color(),
+    night: false,
     horizon: new THREE.Color(),
     zenith: new THREE.Color(),
   };
@@ -29,7 +33,7 @@ export function createSky(scene) {
     fog: false,
     uniforms: {
       horizon: { value: env.horizon }, zenith: { value: env.zenith },
-      sunDir: { value: env.sunDir }, sunColor: { value: env.sunColor },
+      sunDir: { value: env.sunDir }, sunColor: { value: env.sunColor }, stars: { value: 0 },
     },
     vertexShader: /* glsl */`
       varying vec3 vDir;
@@ -40,7 +44,13 @@ export function createSky(scene) {
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 horizon, zenith, sunDir, sunColor;
+      uniform float stars;
       varying vec3 vDir;
+      float hash(vec3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+      }
       void main() {
         vec3 d = normalize(vDir);
         float up = max(d.y, 0.0);
@@ -50,6 +60,17 @@ export function createSky(scene) {
         float low = 1.0 - smoothstep(0.0, 0.5, sunDir.y);
         col += sunColor * (pow(s, 8.0) * (0.12 + 0.35 * low) * (1.0 - up * 0.7));
         col += sunColor * (pow(s, 1200.0) * 6.0 + pow(s, 60.0) * 0.3);
+        if (stars > 0.0 && d.y > 0.0) {
+          // Procedural star field: one possible star per cell of a grid around the sky.
+          vec3 p = d * 230.0;
+          vec3 c = floor(p);
+          float h = hash(c);
+          if (h > 0.982) {
+            float dd = length(fract(p) - 0.5);
+            float b = smoothstep(0.32, 0.0, dd) * (0.4 + 0.6 * (h - 0.982) / 0.018);
+            col += vec3(0.9, 0.93, 1.0) * b * stars * smoothstep(0.0, 0.2, d.y);
+          }
+        }
         if (d.y < 0.0) col = mix(col, horizon * 0.82, min(-d.y * 5.0, 1.0));
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
@@ -92,7 +113,9 @@ export function createSky(scene) {
     scene.fog.near = p.fog[0];
     scene.fog.far = p.fog[1];
     scene.background.copy(env.horizon);
-    clouds.tint(new THREE.Color(p.cloud), p.elev);
+    clouds.tint(new THREE.Color(p.cloud), p.night ? 10 : p.elev);
+    env.night = !!p.night;
+    domeMat.uniforms.stars.value = p.night ? 1.2 : 0;
   }
 
   return {

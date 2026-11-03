@@ -11,6 +11,9 @@ import { Autopilot } from './autopilot.js';
 import { Effects } from './effects.js';
 import { RingCourse } from './rings.js';
 import { SCENARIOS } from './scenarios.js';
+import { MISSIONS, MissionRunner } from './missions.js';
+import { Traffic } from './traffic.js';
+import { Recorder } from './replay.js';
 import { loadSettings, saveSettings, isTouch } from './settings.js';
 import { clamp } from './noise.js';
 
@@ -31,7 +34,6 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.2, 60000);
 
 const sky = createSky(scene);
-sky.setTimeOfDay(settings.timeOfDay);
 sky.setShadows(!low);
 const world = buildWorld(scene, renderer, sky.env, settings.quality);
 
@@ -42,9 +44,20 @@ weather.randomise();
 const aircraft = new Aircraft();
 const model = createAircraftModel();
 scene.add(model.object);
+
+function applyTime(name) {
+  sky.setTimeOfDay(name);
+  model.setLights(sky.env.night);
+  traffic?.model.setLights(sky.env.night);
+}
 const effects = new Effects(scene);
 const rings = new RingCourse(scene);
 const autopilot = new Autopilot();
+const traffic = new Traffic(scene);
+const missions = new MissionRunner();
+const recorder = new Recorder();
+let replaying = false;
+applyTime(settings.timeOfDay);
 
 const hud = createHud(document.getElementById('hud'));
 initInput(renderer.domElement);
@@ -80,20 +93,24 @@ const flybyPos = new THREE.Vector3();
 let flybyAge = 1e9;
 let shake = 0;
 
-function snapCamera() { chaseQuat.copy(aircraft.quat); flybyAge = 1e9; }
+// The camera follows `subject`: the live aircraft, or the replay's display state.
+let subject = aircraft;
+
+function snapCamera() { chaseQuat.copy(subject.quat); flybyAge = 1e9; }
 
 function placeFlyby() {
-  const dir = _v.copy(aircraft.vel);
-  if (dir.lengthSq() < 1) dir.set(0, 0, -1).applyQuaternion(aircraft.quat);
+  const dir = _v.copy(subject.vel);
+  if (dir.lengthSq() < 1) dir.set(0, 0, -1).applyQuaternion(subject.quat);
   dir.normalize();
   const side = new THREE.Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(Math.random() < 0.5 ? -22 : 22);
-  flybyPos.copy(aircraft.pos).addScaledVector(dir, Math.max(120, aircraft.speed * 4)).add(side);
+  flybyPos.copy(subject.pos).addScaledVector(dir, Math.max(120, subject.speed * 4)).add(side);
   flybyPos.y += 4 + Math.random() * 8;
   flybyPos.y = Math.max(flybyPos.y, Math.max(0, terrainHeight(flybyPos.x, flybyPos.z)) + 2);
   flybyAge = 0;
 }
 
 function updateCamera(dt) {
+  const aircraft = subject;
   const look = getLook(dt);
   lookEuler.set(look.pitch, look.yaw, 0);
   lookQuat.setFromEuler(lookEuler);
@@ -144,11 +161,17 @@ function updateCamera(dt) {
 
 // ---------- Menus ----------
 const menu = document.getElementById('menu');
-const crashBox = document.getElementById('crash');
+const resultBox = document.getElementById('result');
 document.getElementById('keys').innerHTML = KEYMAP.map(([k, d]) => `<tr><td>${k}</td><td>${d}</td></tr>`).join('');
-const scenarioList = document.getElementById('scenarios');
-scenarioList.innerHTML = Object.entries(SCENARIOS)
+document.getElementById('scenarios').innerHTML = Object.entries(SCENARIOS)
   .map(([id, s]) => `<button data-spawn="${id}">${s.label}</button>`).join('');
+function renderMissionList() {
+  document.getElementById('missions').innerHTML = MISSIONS.map((m) => {
+    const st = missions.stars[m.id] ?? 0;
+    return `<button data-spawn="mission:${m.id}"><span>${m.title}</span><span class="stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span></button>`;
+  }).join('');
+}
+renderMissionList();
 let paused = true;
 let started = false;
 
@@ -158,10 +181,12 @@ function fillSelect(id, values, current, label = (v) => v[0].toUpperCase() + v.s
   return el;
 }
 fillSelect('setTime', TIMES_OF_DAY, settings.timeOfDay).addEventListener('change', (e) => {
-  settings.timeOfDay = e.target.value; sky.setTimeOfDay(settings.timeOfDay); saveSettings(settings);
+  settings.timeOfDay = e.target.value; saveSettings(settings);
+  if (!missions.mission?.time) applyTime(settings.timeOfDay);
 });
 fillSelect('setWind', Object.keys(WIND_LEVELS), settings.wind).addEventListener('change', (e) => {
-  settings.wind = e.target.value; weather.set(settings.wind); saveSettings(settings);
+  settings.wind = e.target.value; saveSettings(settings);
+  if (!missions.mission) weather.set(settings.wind);
 });
 fillSelect('setQuality', ['high', 'low'], settings.quality).addEventListener('change', (e) => {
   settings.quality = e.target.value; saveSettings(settings); location.reload();
@@ -176,38 +201,94 @@ vol.addEventListener('input', () => { settings.volume = Number(vol.value); setVo
 function showMenu(show) {
   paused = show;
   menu.classList.toggle('hidden', !show);
-  document.getElementById('resume').classList.toggle('hidden', !started || aircraft.crashed);
+  document.getElementById('resume').classList.toggle('hidden', !started || aircraft.crashed || missions.state === 'complete');
   setPaused(show);
+}
+
+function showResult({ title, text, color = '#ff6a4d', stars = null }) {
+  document.getElementById('resultTitle').textContent = title;
+  document.getElementById('resultTitle').style.color = color;
+  document.getElementById('resultText').textContent = text;
+  const st = document.getElementById('resultStars');
+  st.textContent = stars === null ? '' : '★'.repeat(stars) + '☆'.repeat(3 - stars);
+  resultBox.classList.remove('hidden');
 }
 
 let lastSpawn = 'runway';
 let announcedLiftoff = false;
+let crashTime = null;
+let resultTimer = null;
+
 function spawn(id) {
   lastSpawn = id;
+  stopReplay();
+  clearTimeout(resultTimer);
   effects.clear();
   autopilot.disengage();
-  weather.randomise();
-  if (id === 'rings') {
-    aircraft.reset(rings.spawn());
-    rings.start();
-  } else {
+  recorder.clear();
+  traffic.reset();
+  crashTime = null;
+  let hint;
+  if (id.startsWith('mission:')) {
+    const m = MISSIONS.find((x) => x.id === id.slice(8));
     rings.stop();
-    aircraft.reset(SCENARIOS[id].spawn());
+    missions.start(m);
+    weather.set(m.wind[0], m.wind[1]);
+    applyTime(m.time ?? settings.timeOfDay);
+    aircraft.reset(m.spawn());
+    hint = `Mission: ${m.title}`;
+  } else {
+    missions.stop();
+    weather.set(settings.wind);
+    weather.randomise();
+    applyTime(settings.timeOfDay);
+    if (id === 'rings') {
+      aircraft.reset(rings.spawn());
+      rings.start();
+    } else {
+      rings.stop();
+      aircraft.reset(SCENARIOS[id].spawn());
+    }
+    const sc = SCENARIOS[id];
+    hint = (isTouch && sc.touchHint) || sc.hint;
   }
+  subject = aircraft;
   snapCamera();
-  crashBox.classList.add('hidden');
+  resultBox.classList.add('hidden');
   started = true;
   announcedLiftoff = aircraft.onGround === false;
   startAudio();
   showMenu(false);
   hud.clearMessages();
-  const sc = SCENARIOS[id];
-  hud.message((isTouch && sc.touchHint) || sc.hint, '#cfe8ff', 7);
+  hud.message(hint, '#cfe8ff', 9);
 }
-document.querySelectorAll('[data-spawn]').forEach((b) => b.addEventListener('click', () => spawn(b.dataset.spawn)));
+document.querySelectorAll('#menu').forEach((el) => el.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-spawn]');
+  if (b) spawn(b.dataset.spawn);
+}));
 document.getElementById('resume').addEventListener('click', () => { startAudio(); showMenu(false); });
 document.getElementById('retry').addEventListener('click', () => spawn(lastSpawn));
-document.getElementById('crashMenu').addEventListener('click', () => { crashBox.classList.add('hidden'); showMenu(true); });
+document.getElementById('watchReplay').addEventListener('click', () => { resultBox.classList.add('hidden'); startReplay(); });
+document.getElementById('resultMenu').addEventListener('click', () => { resultBox.classList.add('hidden'); renderMissionList(); showMenu(true); });
+
+// ---------- Replay ----------
+function startReplay() {
+  if (replaying || !recorder.start()) { hud.message('Nothing to replay yet', '#fc6', 1.5); return; }
+  replaying = true;
+  resultBox.classList.add('hidden');
+  subject = recorder.sample(0);
+  if (cameraMode === 'cockpit') cameraMode = 'chase';
+  snapCamera();
+  setPaused(false);
+}
+function stopReplay() {
+  if (!replaying) return;
+  replaying = false;
+  recorder.stop();
+  subject = aircraft;
+  snapCamera();
+  if (aircraft.crashed || missions.state === 'complete' || missions.state === 'failed') resultBox.classList.remove('hidden');
+}
 
 function toggleAutopilot() {
   if (autopilot.on) {
@@ -223,10 +304,21 @@ function toggleAutopilot() {
 
 function handlePresses() {
   for (const code of consumePresses()) {
+    if (replaying) {
+      if (code === 'KeyV' || code === 'Escape' || code === 'KeyP') stopReplay();
+      else if (code === 'KeyC') {
+        cameraMode = ['chase', 'tower', 'flyby'][(['chase', 'tower', 'flyby'].indexOf(cameraMode) + 1) % 3];
+        snapCamera();
+        if (cameraMode === 'flyby') placeFlyby();
+      }
+      continue;
+    }
     if (code === 'KeyP' || code === 'Escape') {
-      if (started && !aircraft.crashed) showMenu(!paused);
+      if (started && !aircraft.crashed && resultBox.classList.contains('hidden')) showMenu(!paused);
     } else if (code === 'Enter') {
-      if (!started || aircraft.crashed) spawn(lastSpawn);
+      if (!started || aircraft.crashed || !resultBox.classList.contains('hidden')) spawn(lastSpawn);
+    } else if (code === 'KeyV') {
+      if (started && menu.classList.contains('hidden')) startReplay();
     } else if (paused) {
       continue;
     } else if (code === 'KeyC') {
@@ -257,6 +349,7 @@ function gearWorld(x, z) { return _gear.set(x, -1.35, z).applyQuaternion(aircraf
 function handleEvents() {
   for (const e of aircraft.events) {
     if (e.type === 'touchdown') {
+      missions.onTouchdown(e);
       const fpm = Math.round(e.fpm);
       const rating = fpm < 150 ? 'Butter!' : fpm < 350 ? 'Smooth landing' : fpm < 600 ? 'Firm landing' : 'Hard landing';
       hud.message(`${rating} ${fpm} ft/min${e.onRunway ? '' : ' (off the runway)'}`, fpm < 600 ? '#9f6' : '#fc6', 4);
@@ -274,11 +367,37 @@ function handleEvents() {
       playCrash();
       shake += 0.05;
       effects.crash(aircraft.pos);
-      document.getElementById('crashReason').textContent = e.reason;
-      setTimeout(() => { if (aircraft.crashed) crashBox.classList.remove('hidden'); }, 1500);
+      crashTime = clock;
+      resultTimer = setTimeout(() => {
+        if (aircraft.crashed && !replaying) showResult({ title: 'Crashed', text: e.reason });
+      }, 1500);
     }
   }
   aircraft.events.length = 0;
+}
+
+function handleMission(dt) {
+  const r = missions.update(aircraft, dt);
+  if (!r) return;
+  if (r.type === 'event') {
+    playChime([440, 330, 440, 330], 0.18, 'square', 0.12);
+    hud.message(r.msg, '#ff6a4d', 6);
+  } else if (r.type === 'objective') {
+    playChime([660, 990], 0.1);
+    hud.message(`✓ ${r.text}  ·  next: ${r.next}`, '#ffcf6a', 4);
+  } else if (r.type === 'complete') {
+    playChime([660, 880, 1100, 1320], 0.14);
+    hud.message('Mission complete!', '#9f6', 4);
+    resultTimer = setTimeout(() => {
+      if (!replaying) showResult({
+        title: 'Mission complete', color: '#9f6', stars: r.stars,
+        text: `${missions.mission.title}: landing score ${r.score}/100, time ${Math.floor(r.time / 60)}:${String(Math.round(r.time % 60)).padStart(2, '0')}.`,
+      });
+    }, 2500);
+  } else if (r.type === 'fail' && !aircraft.crashed) {
+    hud.message(`Mission failed: ${r.reason}`, '#ff6a4d', 4);
+    resultTimer = setTimeout(() => { if (!replaying) showResult({ title: 'Mission failed', text: r.reason }); }, 2000);
+  }
 }
 
 function updateParticles(dt) {
@@ -308,7 +427,12 @@ function frame(now) {
   last = now;
   handlePresses();
 
-  if (!paused) {
+  if (replaying) {
+    clock += dt;
+    subject = recorder.sample(dt);
+    traffic.update(dt);
+    effects.update(dt);
+  } else if (!paused) {
     clock += dt;
     const intent = updateControls(aircraft, dt);
     autopilot.update(aircraft, dt, autopilot.on ? intent : null);
@@ -321,7 +445,10 @@ function frame(now) {
       steps++;
     }
     if (steps === 24) acc = 0;
+    traffic.update(dt);
+    if (!aircraft.crashed && aircraft.pos.distanceTo(traffic.pos) < 7) aircraft.crash('Mid-air collision with other traffic');
     handleEvents();
+    handleMission(dt);
     const r = rings.update(aircraft, dt);
     if (r?.type === 'ring') { playChime([880, 1320], 0.1); hud.message(`Ring ${r.index}/${r.total}`, '#3dff7a', 1.5); }
     if (r?.type === 'finish') {
@@ -329,17 +456,19 @@ function frame(now) {
       const t = r.time;
       hud.message(`Course complete: ${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}${r.best ? ' (new best!)' : ''}`, '#3dff7a', 8);
     }
+    // Keep recording briefly after a crash so the replay shows the impact.
+    if (crashTime === null || clock - crashTime < 2) recorder.record(aircraft, dt);
     updateParticles(dt);
     effects.update(dt);
   }
 
-  model.object.position.copy(aircraft.pos);
-  model.object.quaternion.copy(aircraft.quat);
-  model.update(aircraft, paused ? 0 : dt);
-  updateCamera(paused ? 0 : dt);
-  sky.update(camera, aircraft.pos);
+  model.object.position.copy(subject.pos);
+  model.object.quaternion.copy(subject.quat);
+  model.update(subject, paused && !replaying ? 0 : dt);
+  updateCamera(paused && !replaying ? 0 : dt);
+  sky.update(camera, subject.pos);
   world.update(clock, camera, weather.surfaceWind);
-  if (cameraMode === 'cockpit') {
+  if (cameraMode === 'cockpit' && !replaying) {
     panelTimer -= dt;
     if (panelTimer <= 0) {
       hud.drawPanelTexture(model.panelCanvas, aircraft, autopilot);
@@ -347,9 +476,12 @@ function frame(now) {
       panelTimer = 1 / 30;
     }
   }
-  updateAudio(aircraft);
+  updateAudio(replaying ? { ...aircraft, crashed: true } : aircraft);
   renderer.render(scene, camera);
-  hud.draw(aircraft, camera, cameraMode, paused ? 0 : dt, { wind: aircraft.wind, ap: autopilot, rings });
+  hud.draw(aircraft, camera, cameraMode, paused && !replaying ? 0 : dt, {
+    wind: aircraft.wind, ap: autopilot, rings, mission: missions,
+    replay: replaying ? { t: recorder.t, duration: recorder.duration } : null,
+  });
   requestAnimationFrame(frame);
 }
 
@@ -359,4 +491,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { aircraft, camera, scene, weather, autopilot, rings, spawn, MS_TO_KT };
+window.sim = { aircraft, camera, scene, weather, autopilot, rings, missions, traffic, recorder, spawn, snapCamera, MS_TO_KT };

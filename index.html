@@ -37,7 +37,16 @@
       <p class="sub">A light-aircraft flight simulator over a procedurally generated island.</p>
       <div class="buttons">
         <button id="resume" class="hidden">Resume</button>
-        <div id="scenarios" class="buttons"></div>
+      </div>
+      <div class="columns">
+        <div>
+          <h3>Free flight</h3>
+          <div id="scenarios" class="buttons"></div>
+        </div>
+        <div>
+          <h3>Missions</h3>
+          <div id="missions" class="buttons"></div>
+        </div>
       </div>
       <h3>Settings</h3>
       <div class="settings">
@@ -56,15 +65,17 @@
     </div>
   </div>
 
-  <div id="crash" class="overlay hidden">
+  <div id="result" class="overlay hidden">
     <div class="panel small">
-      <h2>Crashed</h2>
-      <p id="crashReason"></p>
+      <h2 id="resultTitle">Crashed</h2>
+      <div id="resultStars" class="bigstars"></div>
+      <p id="resultText"></p>
       <div class="buttons">
         <button id="retry">Try again</button>
-        <button id="crashMenu">Choose a scenario</button>
+        <button id="watchReplay">Watch the replay</button>
+        <button id="resultMenu">Back to the menu</button>
       </div>
-      <p class="tip">Enter restarts the last scenario.</p>
+      <p class="tip">Enter restarts. V replays the last minute at any time.</p>
     </div>
   </div>
 

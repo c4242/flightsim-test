@@ -121,6 +121,19 @@ function addTreeObstacle(x, y, z, radius, height) {
   list.push({ x, y, z, radius, height });
 }
 
+const boxGrid = new Map(); // houses: { cx, cz, cy, hx, hy, hz, cos, sin }
+function addBoxObstacle(b) {
+  const k = _key(Math.floor(b.cx / TREE_CELL), Math.floor(b.cz / TREE_CELL));
+  let list = boxGrid.get(k);
+  if (!list) boxGrid.set(k, (list = []));
+  list.push(b);
+}
+const insideBox = (p, b) => {
+  const dx = p.x - b.cx, dz = p.z - b.cz;
+  const lx = dx * b.cos - dz * b.sin, lz = dx * b.sin + dz * b.cos;
+  return Math.abs(lx) < b.hx && Math.abs(lz) < b.hz && Math.abs(p.y - b.cy) < b.hy;
+};
+
 // Returns a description if the world point is inside a tree or a building.
 export function obstacleAt(p) {
   const ix = Math.floor(p.x / TREE_CELL), iz = Math.floor(p.z / TREE_CELL);
@@ -134,13 +147,11 @@ export function obstacleAt(p) {
         const r = up < t.height * 0.3 ? 0.5 : t.radius * (1 - (up - t.height * 0.3) / (t.height * 0.7));
         if ((p.x - t.x) ** 2 + (p.z - t.z) ** 2 < r * r) return 'Hit a tree';
       }
+      const boxes = boxGrid.get(_key(ix + a, iz + b));
+      if (boxes) for (const h of boxes) if (insideBox(p, h)) return 'Hit a house';
     }
   }
-  for (const b of buildings) {
-    const dx = p.x - b.cx, dz = p.z - b.cz;
-    const lx = dx * b.cos - dz * b.sin, lz = dx * b.sin + dz * b.cos;
-    if (Math.abs(lx) < b.hx && Math.abs(lz) < b.hz && Math.abs(p.y - b.cy) < b.hy) return 'Hit a building';
-  }
+  for (const b of buildings) if (insideBox(p, b)) return 'Hit a building';
   return null;
 }
 
@@ -426,7 +437,7 @@ function makeLight(color, size = 1.5) {
   return s;
 }
 
-function buildAirfield(renderer, f, lights, papis, windsocks) {
+function buildAirfield(renderer, f, lights, papis, windsocks, nightLights) {
   const group = new THREE.Group();
   group.position.set(f.x, 0, f.z);
   group.rotation.y = -f.heading;
@@ -467,6 +478,10 @@ function buildAirfield(renderer, f, lights, papis, windsocks) {
     for (const s of [-1, 1]) {
       m.makeTranslation(s * (f.width / 2 + 2), E + 0.2, z);
       edge.setMatrixAt(n++, m);
+      const wp = fieldToWorld(f, -z, s * (f.width / 2 + 2), E + 0.5);
+      // Threshold ends show green/red, the rest white.
+      const endLight = k === 0 || k === count - 1;
+      nightLights.push([wp.x, wp.y, wp.z, endLight ? 0.3 : 1, endLight ? 1 : 0.95, endLight ? 0.4 : 0.8]);
     }
   }
   group.add(edge);
@@ -567,6 +582,99 @@ function terrainHeightLocal(f, alongNeg, across) {
   return Math.max(terrainHeight(p.x, p.z), 0);
 }
 
+// ---------- Villages ----------
+export const VILLAGES = [
+  { name: 'Millbrook', x: -3000, z: 3200, r: 380, n: 70 },
+  { name: 'Southport', x: -700, z: 6900, r: 320, n: 55 },
+  { name: 'Eastbrook', x: 3100, z: 250, r: 300, n: 45 },
+  { name: 'Northcove', x: 250, z: -7900, r: 260, n: 40 },
+  { name: 'Westridge', x: -4500, z: -3700, r: 300, n: 45 },
+];
+
+// Unit triangular prism: ridge along X at the top, base 1 x 1, height 1.
+function prismGeometry() {
+  const A = [-0.5, 0, -0.5], B = [-0.5, 0, 0.5], C = [-0.5, 1, 0], D = [0.5, 0, -0.5], E = [0.5, 0, 0.5], F = [0.5, 1, 0];
+  const tris = [A, B, C, D, F, E, A, C, F, A, F, D, B, E, F, B, F, C];
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(tris.flat(), 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function nearAirfield(x, z, pad = 0) {
+  for (const f of AIRFIELDS) {
+    const { along, across } = fieldLocal(f, x, z);
+    if (Math.abs(across) < f.margin + 150 + pad && Math.abs(along) < f.length / 2 + 600 + pad) return true;
+    if (Math.abs(across) < 250 + pad && Math.abs(along) < f.length / 2 + 2500) return true;
+  }
+  return false;
+}
+
+function buildVillages(nightLights) {
+  let s = 777;
+  const rnd = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
+  const houses = [];
+  for (const v of VILLAGES) {
+    for (let tries = 0; tries < v.n * 30 && houses.filter((h) => h.v === v).length < v.n; tries++) {
+      // Denser towards the middle.
+      const a = rnd() * Math.PI * 2, d = v.r * Math.sqrt(rnd()) * (0.4 + 0.6 * rnd());
+      const x = v.x + Math.cos(a) * d, z = v.z + Math.sin(a) * d;
+      if (nearAirfield(x, z, 30)) continue;
+      const w = 7 + rnd() * 5, dpt = 8 + rnd() * 5;
+      const rot = (Math.round(rnd() * 4) * Math.PI) / 2 + (rnd() - 0.5) * 0.3;
+      const hs = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => terrainHeight(x + sx * w / 2, z + sz * dpt / 2)));
+      const lo = Math.min(...hs), hi = Math.max(...hs);
+      if (lo < 3 || hi - lo > 2.5) continue;
+      if (houses.some((h) => (h.x - x) ** 2 + (h.z - z) ** 2 < 15 * 15)) continue;
+      houses.push({ v, x, z, w, d: dpt, rot, lo, hi, wallH: 3.5 + rnd() * 2.5 * (rnd() < 0.2 ? 2 : 1) });
+    }
+  }
+  const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), houses.length);
+  const roofs = new THREE.InstancedMesh(prismGeometry(), new THREE.MeshLambertMaterial({ color: 0xffffff }), houses.length);
+  walls.castShadow = roofs.castShadow = true;
+  walls.receiveShadow = roofs.receiveShadow = true;
+  const wallCols = ['#efe9dc', '#e8dcc0', '#f3efe6', '#d9cdb4', '#e6d2a8', '#cfd8dc'].map((c) => new THREE.Color(c));
+  const roofCols = ['#9a3b2a', '#7d3424', '#5b4a3e', '#4b4f56', '#a24a2c'].map((c) => new THREE.Color(c));
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  houses.forEach((h, i) => {
+    // Ridge runs along the longer side.
+    const long = Math.max(h.w, h.d), short = Math.min(h.w, h.d);
+    q.setFromAxisAngle(up, h.rot);
+    const base = h.lo - 1.2, top = h.hi + h.wallH;
+    p.set(h.x, (base + top) / 2, h.z);
+    sc.set(long, top - base, short);
+    m.compose(p, q, sc);
+    walls.setMatrixAt(i, m);
+    walls.setColorAt(i, wallCols[i % wallCols.length]);
+    p.set(h.x, top, h.z);
+    sc.set(long + 0.8, 2.2 + short * 0.15, short + 0.8);
+    m.compose(p, q, sc);
+    roofs.setMatrixAt(i, m);
+    roofs.setColorAt(i, roofCols[(i * 7) % roofCols.length]);
+    addBoxObstacle({ cx: h.x, cz: h.z, cy: (base + top + 3) / 2, hx: long / 2 + 0.6, hy: (top + 3 - base) / 2, hz: short / 2 + 0.6,
+      cos: Math.cos(h.rot), sin: Math.sin(h.rot) });
+    // Lit windows at night.
+    if (i % 3 !== 2) {
+      const side = rnd() < 0.5 ? -1 : 1, off = (short / 2 + 0.4) * side, along = (rnd() - 0.5) * long * 0.6;
+      nightLights.push([h.x + Math.sin(h.rot) * off + Math.cos(h.rot) * along, h.lo + 2.2,
+        h.z + Math.cos(h.rot) * off - Math.sin(h.rot) * along, 1.0, 0.78, 0.45]);
+    }
+  });
+  // Street lights scattered through each village.
+  for (const v of VILLAGES) {
+    for (let k = 0; k < v.n / 3; k++) {
+      const a = rnd() * Math.PI * 2, d = v.r * 0.8 * Math.sqrt(rnd());
+      const x = v.x + Math.cos(a) * d, z = v.z + Math.sin(a) * d;
+      const h = terrainHeight(x, z);
+      if (h > 2) nightLights.push([x, h + 6, z, 1.0, 0.62, 0.3]);
+    }
+  }
+  const g = new THREE.Group();
+  g.add(walls, roofs);
+  return g;
+}
+
 function buildTrees(maxTrees) {
   const trunkGeo = new THREE.CylinderGeometry(0.25, 0.35, 3, 5).translate(0, 1.5, 0);
   const crownGeo = new THREE.ConeGeometry(2.6, 8, 7).translate(0, 6.5, 0);
@@ -593,6 +701,7 @@ function buildTrees(maxTrees) {
       if (Math.abs(across) < 250 && Math.abs(along) < f.length / 2 + 2500) nearField = true;
     }
     if (nearField) continue;
+    if (VILLAGES.some((v) => (x - v.x) ** 2 + (z - v.z) ** 2 < (v.r * 0.95) ** 2)) continue;
     const h = terrainHeight(x, z);
     if (h < 8 || h > 800) continue;
     const forest = noise.fbm(x * 0.0007 + 40, z * 0.0007, 3);
@@ -629,14 +738,29 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
   scene.add(buildTerrainMesh());
   const sea = buildSea(env);
   scene.add(sea.mesh);
-  const lights = [], papis = [], windsocks = [];
-  for (const f of AIRFIELDS) scene.add(buildAirfield(renderer, f, lights, papis, windsocks));
+  const lights = [], papis = [], windsocks = [], nightLights = [];
+  for (const f of AIRFIELDS) scene.add(buildAirfield(renderer, f, lights, papis, windsocks, nightLights));
+  scene.add(buildVillages(nightLights));
   scene.add(buildTrees(quality === 'low' ? 3500 : 10000));
+
+  // Night lights as fixed-pixel-size points so they stay visible from far away.
+  const lp = new Float32Array(nightLights.length * 3), lc = new Float32Array(nightLights.length * 3);
+  nightLights.forEach((l, i) => { lp.set(l.slice(0, 3), i * 3); lc.set(l.slice(3), i * 3); });
+  const lgeo = new THREE.BufferGeometry();
+  lgeo.setAttribute('position', new THREE.BufferAttribute(lp, 3));
+  lgeo.setAttribute('color', new THREE.BufferAttribute(lc, 3));
+  const nightPoints = new THREE.Points(lgeo, new THREE.PointsMaterial({
+    size: 5, sizeAttenuation: false, map: glowTex, vertexColors: true, transparent: true,
+    depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+  }));
+  nightPoints.visible = false;
+  scene.add(nightPoints);
 
   const _v = new THREE.Vector3();
   return {
     update(t, camera, wind) {
       sea.update(t);
+      nightPoints.visible = env.night;
       // Keep point lights a visible size at any distance.
       for (const l of lights) {
         l.getWorldPosition(_v);

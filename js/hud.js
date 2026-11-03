@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { MS_TO_KT } from './aircraft.js';
-import { AIRFIELDS, terrainHeight, fieldToWorld } from './terrain.js';
+import { AIRFIELDS, VILLAGES, terrainHeight, fieldToWorld } from './terrain.js';
 
 const M_TO_FT = 3.28084;
 const DEG = 180 / Math.PI;
@@ -513,6 +513,18 @@ export function createHud(canvas) {
     g.strokeStyle = '#9fb3c8'; g.lineWidth = 2; g.strokeRect(x0, y0, size, size);
     const toScreen = (wx, wz) => [x0 + (wx / MAP_RANGE + 0.5) * size, y0 + (wz / MAP_RANGE + 0.5) * size];
     g.font = `bold 14px ${FONT}`; g.textAlign = 'left'; g.textBaseline = 'middle';
+    g.font = `12px ${FONT}`;
+    for (const v of VILLAGES) {
+      const [x, y] = toScreen(v.x, v.z);
+      g.fillStyle = '#ffe9b0'; g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#000'; g.fillText(v.name, x + 7, y + 1);
+      g.fillStyle = '#ffe9b0'; g.fillText(v.name, x + 6, y);
+    }
+    if (mapTarget) {
+      const [x, y] = toScreen(mapTarget.x, mapTarget.z);
+      g.strokeStyle = '#ffb21a'; g.lineWidth = 3; g.beginPath(); g.arc(x, y, 9, 0, Math.PI * 2); g.stroke();
+    }
+    g.font = `bold 14px ${FONT}`;
     for (const f of AIRFIELDS) {
       const [x, y] = toScreen(f.x, f.z);
       g.fillStyle = '#000'; g.fillText(`${f.name} ${f.numbers.join('/')} · ${Math.round(f.elevation * M_TO_FT)} ft`, x + 13, y + 1);
@@ -538,14 +550,13 @@ export function createHud(canvas) {
   }
 
   // Arrow at the screen edge (or marker on screen) pointing to the next ring.
-  function ringGuide(ac, camera, rings) {
-    const target = rings.next;
+  function guide(ac, camera, target, color) {
     if (!target) return;
     const s = project(camera, target);
     const dist = ac.pos.distanceTo(target);
     const onScreen = !s.behind && s.x > 40 && s.x < W - 40 && s.y > 40 && s.y < H - 40;
     g.save();
-    g.strokeStyle = '#3dff7a'; g.fillStyle = '#3dff7a'; g.lineWidth = 2;
+    g.strokeStyle = color; g.fillStyle = color; g.lineWidth = 2;
     g.font = `bold 13px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
     if (onScreen) {
       g.beginPath(); g.arc(s.x, s.y, 14, 0, Math.PI * 2); g.stroke();
@@ -594,7 +605,7 @@ export function createHud(canvas) {
     g.font = `14px ${FONT}`;
     const w = Math.max(...lines.map(([t]) => g.measureText(t).width)) + 28;
     const h = lines.length * 20 + 16;
-    const x = W - w - 16, y = compact ? 16 : 200;
+    const x = W - w - 16, y = compact ? 16 : Math.max(340, H * 0.42);
     g.globalAlpha = Math.min(1, landing.t);
     g.fillStyle = 'rgba(10,14,20,0.7)';
     g.fillRect(x, y, w, h);
@@ -603,12 +614,74 @@ export function createHud(canvas) {
     g.globalAlpha = 1;
   }
 
-  function draw(ac, camera, cameraMode, dt, { wind, ap, rings }) {
+  // Wraps text to a maximum width; returns the lines.
+  function wrap(text, maxW) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const t = line ? `${line} ${w}` : w;
+      if (g.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function objectivesPanel(m) {
+    const mission = m.mission;
+    const fs = compact ? 12 : 13;
+    const w = compact ? Math.min(330, W * 0.42) : 330;
+    const x = compact ? W / 2 - w / 2 : 8, y = compact ? 8 : 230;
+    g.font = `${fs}px ${FONT}`;
+    // Show the briefing for the first few seconds of the mission.
+    const brief = m.time < 14 && m.state === 'active' ? wrap(mission.brief, w - 24) : [];
+    const items = mission.objectives.flatMap((o, i) => {
+      const done = i < m.index || m.state === 'complete';
+      const mark = done ? '✓' : i === m.index ? '▸' : '·';
+      const col = done ? '#8fd18f' : i === m.index ? '#ffcf6a' : '#9aa8b8';
+      return wrap(`${mark} ${o.text}`, w - 24).map((t, k) => [k ? `  ${t}` : t, col]);
+    });
+    const lh = fs + 5;
+    const h = 30 + (brief.length ? brief.length * lh + 8 : 0) + items.length * lh;
+    g.fillStyle = 'rgba(10,14,20,0.6)';
+    g.fillRect(x, y, w, h);
+    g.textAlign = 'left'; g.textBaseline = 'top';
+    g.fillStyle = '#fff'; g.font = `bold ${fs + 1}px ${FONT}`;
+    g.fillText(mission.title.toUpperCase(), x + 12, y + 8);
+    g.font = `${fs}px ${FONT}`;
+    let yy = y + 28;
+    g.fillStyle = '#cfe8ff';
+    for (const t of brief) { g.fillText(t, x + 12, yy); yy += lh; }
+    if (brief.length) yy += 8;
+    for (const [t, c] of items) { g.fillStyle = c; g.fillText(t, x + 12, yy); yy += lh; }
+  }
+
+  function replayBanner(rp) {
+    const fmt = (v) => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
+    const text = `▶ REPLAY  ${fmt(Math.min(rp.t, rp.duration))} / ${fmt(rp.duration)}   ·   C: camera   ·   V or Esc: exit`;
+    g.font = `bold 16px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const tw = g.measureText(text).width;
+    g.fillStyle = 'rgba(0,0,0,0.55)';
+    g.fillRect(W / 2 - tw / 2 - 16, 14, tw + 32, 34);
+    g.fillStyle = '#ff5a5a';
+    g.fillText(text, W / 2, 31, W - 40);
+    // Progress bar.
+    g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(W * 0.2, H - 14, W * 0.6, 4);
+    g.fillStyle = '#ff5a5a'; g.fillRect(W * 0.2, H - 14, W * 0.6 * Math.min(1, rp.t / Math.max(rp.duration, 0.1)), 4);
+  }
+
+  let mapTarget = null;
+
+  function draw(ac, camera, cameraMode, dt, { wind, ap, rings, mission, replay }) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
+    if (replay) { replayBanner(replay); return; }
 
     if (cameraMode === 'cockpit' && showPanel) cockpitHud(ac, camera);
-    if (rings?.active) { ringGuide(ac, camera, rings); ringStatus(rings); }
+    if (rings?.active) { guide(ac, camera, rings.next, '#3dff7a'); ringStatus(rings); }
+    mapTarget = mission?.active ? mission.target : null;
+    if (mapTarget) guide(ac, camera, mapTarget, '#ffb21a');
+    if (mission?.mission) objectivesPanel(mission);
     readouts(ac, 16, 16, wind, ap);
     if (!compact) drawMinimap(ac, rings, W - 100, 100, 84);
 
@@ -636,10 +709,10 @@ export function createHud(canvas) {
     messages.forEach((m, i) => {
       g.globalAlpha = Math.min(1, m.t / 0.6);
       g.fillStyle = 'rgba(0,0,0,0.45)';
-      const tw = Math.min(W - 20, g.measureText(m.text).width);
+      const tw = Math.min(W - 20, 760, g.measureText(m.text).width);
       g.fillRect(W / 2 - tw / 2 - 14, my + i * 38 - 16, tw + 28, 32);
       g.fillStyle = m.color;
-      g.fillText(m.text, W / 2, my + i * 38, W - 30);
+      g.fillText(m.text, W / 2, my + i * 38, Math.min(W - 30, 750));
     });
     g.globalAlpha = 1;
 

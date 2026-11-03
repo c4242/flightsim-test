@@ -108,6 +108,7 @@ export class Aircraft {
     this.onGround = !!spawn.onGround;
     this.airborneTime = 0;
     this.overG = 0;
+    this.engineFailed = false;
     this.overspeed = false;
     this.prevV = undefined;
     this.accel = 0;
@@ -205,16 +206,20 @@ export class Aircraft {
     }
 
     // --- Engine ---
-    this.rpm += (700 + 1900 * c.throttle + V * 6 - this.rpm) * Math.min(1, dt * 2.5);
+    // A failed engine windmills in the airflow, gives no thrust and adds drag.
+    const rpmTarget = this.engineFailed ? Math.max(0, V * 14 - 150) : 700 + 1900 * c.throttle + V * 6;
+    this.rpm += (rpmTarget - this.rpm) * Math.min(1, dt * (this.engineFailed ? 0.8 : 2.5));
     const airspeedAlongNose = Math.max(0, -vb.z);
-    const thrust = SPEC.maxThrust * c.throttle * Math.max(0, 1 - airspeedAlongNose / SPEC.propMaxSpeed);
+    const power = this.engineFailed ? 0 : c.throttle;
+    const thrust = SPEC.maxThrust * power * Math.max(0, 1 - airspeedAlongNose / SPEC.propMaxSpeed)
+      - (this.engineFailed ? q * SPEC.wingArea * 0.008 : 0);
     _force.addScaledVector(fwd, thrust);
 
     // --- Aerodynamic moments (body frame angular acceleration) ---
     const qn = Math.min(q / Q_REF, 3);
     const vn = V / 50;
     // Propeller slipstream over the tail keeps the elevator and rudder working at low speed.
-    const slip = c.throttle * 0.35 * clamp(1 - vn, 0, 1);
+    const slip = power * 0.35 * clamp(1 - vn, 0, 1);
     const qTail = qn + slip;
     const elev = clamp(c.elevator + this.trim, -1, 1);
     const angAcc = _angAcc.set(

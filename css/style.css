@@ -38,7 +38,7 @@ button:hover { background: #2f4c6b; border-color: #7aa3cc; }
 #keys td { padding: 4px 6px; border-bottom: 1px solid #22303f; }
 #keys td:first-child { color: #ffcf6a; white-space: nowrap; width: 40%; }
 .tip { color: #8aa0b6; font-size: 13px; margin-bottom: 0; }
-#crashReason { font-size: 18px; }
+#resultText { font-size: 17px; }
 
 h3 { font-family: "Saira Condensed", sans-serif; font-size: 20px; color: #ffcf6a; margin: 6px 0 8px; letter-spacing: 0.04em; }
 #scenarios { margin: 0; }
@@ -77,3 +77,10 @@ details summary { cursor: pointer; color: #ffcf6a; font-family: "Saira Condensed
   background: rgba(20,30,45,0.55); border: 1px solid rgba(255,255,255,0.35);
 }
 #touch button.on { background: rgba(255,178,26,0.6); }
+
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 18px; }
+.columns .buttons { margin-top: 0; }
+#missions button { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.stars { color: #ffcf3a; letter-spacing: 2px; white-space: nowrap; }
+.bigstars { color: #ffcf3a; font-size: 34px; letter-spacing: 6px; min-height: 0; }
+.panel { width: min(760px, 100%); }

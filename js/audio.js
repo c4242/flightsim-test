@@ -116,8 +116,9 @@ export function updateAudio(ac) {
   const f = (ac.rpm / 60) * 2;
   engineA.frequency.setTargetAtTime(f, t, 0.05);
   engineB.frequency.setTargetAtTime(f * 0.5, t, 0.05);
-  engineFilter.frequency.setTargetAtTime(250 + ac.controls.throttle * 900, t, 0.1);
-  engineGain.gain.setTargetAtTime(alive ? 0.12 + ac.controls.throttle * 0.18 : 0, t, 0.1);
+  engineFilter.frequency.setTargetAtTime(250 + (ac.engineFailed ? 0 : ac.controls.throttle) * 900, t, 0.1);
+  const power = ac.engineFailed ? 0 : ac.controls.throttle;
+  engineGain.gain.setTargetAtTime(alive ? (ac.engineFailed ? Math.min(0.05, ac.rpm / 20000) : 0.12 + power * 0.18) : 0, t, 0.1);
 
   warnGain.gain.setTargetAtTime(alive && ac.limitWarning ? 0.05 : 0, t, 0.05);
   const s = ac.tas ?? ac.speed;

@@ -21,6 +21,7 @@ export const KEYMAP = [
   ['C', 'Camera: chase, cockpit, tower, flyby'],
   ['Mouse drag', 'Look around (double-click to recentre)'],
   ['N', 'Map'],
+  ['V', 'Instant replay of the last minute (C changes camera)'],
   ['H', 'Hide / show instruments and HUD'],
   ['M', 'Mute'],
   ['P or Esc', 'Pause menu'],

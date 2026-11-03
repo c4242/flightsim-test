@@ -1,7 +1,10 @@
 # Skyhaven Flight
 
 A light-aircraft flight simulator that runs in the browser. You fly a small single-engine low-wing
-plane over a procedurally generated island with two airfields, a mountain canyon, forests, farmland and sea.
+plane over a procedurally generated island with two airfields, five villages, a mountain canyon, forests, farmland
+and sea, with another aircraft flying circuits at the main airfield.
+
+**Play:** https://c4242.github.io/flightsim-test/
 It works with a keyboard and mouse, a gamepad, or touch on phones and tablets.
 
 There is no build step and nothing to install: it's plain HTML and JavaScript ES modules, with
@@ -29,9 +32,29 @@ deploy from the `main` branch, root folder).
 
 Every landing is scored out of 100 for sink rate, touchdown point, centreline and crab angle.
 
+## Missions
+
+Flight-school missions have objectives to complete in order. A panel lists them, and an arrow points to the
+next gate or destination. You earn one to three stars based on your landing score; your best is saved.
+
+| Mission | What you do |
+| --- | --- |
+| First flight | Take off, climb to 1,500 ft, turn south and land back at Skyhaven. |
+| Traffic circuit | Fly a left-hand circuit through crosswind, downwind, base and final gates, sharing the circuit with AI traffic, and land on 36. |
+| Cross-country to Eastfield | Fly over the village of Eastbrook and land on the short hilltop strip. |
+| Engine failure | The engine quits on the way in. Glide to a runway at about 65 kt. |
+| Strong crosswind | Land on 36 in a strong, gusty westerly. |
+| Night landing | A moonlit approach using the approach lights, the PAPI and your landing light. |
+
+## Replay
+
+Press **V** at any time, or choose *Watch the replay* after a crash or a mission, to replay the last minute of
+flight. C switches between the chase, tower and flyby cameras, and V or Esc returns to flying.
+
 ## Settings
 
-The pause menu has settings for time of day (morning, noon, evening), wind (calm, light, moderate, strong),
+The pause menu has settings for time of day (morning, noon, evening, or night with stars, moonlight, runway and
+village lights and the aircraft's landing light), wind (calm, light, moderate, strong),
 graphics quality (high or low; low turns off shadows and thins the forests, and is the default on touch devices),
 volume and inverted pitch. They are saved in your browser. Add `?quality=low` to the URL to force low quality.
 
@@ -51,6 +74,7 @@ volume and inverted pitch. They are saved in your browser. Add `?quality=low` to
 | C | Camera: chase, cockpit (3D panel + HUD), tower, flyby |
 | Mouse drag | Look around (double-click to recentre) |
 | N | Map |
+| V | Instant replay of the last minute |
 | H | Hide / show the instruments and HUD |
 | M | Mute |
 | P / Esc | Pause menu |
@@ -76,7 +100,7 @@ right is the throttle, and the buttons give flaps, brakes, autopilot, camera, ma
 - **Landing:** follow the PAPI lights beside each runway: two white and two red means you're on a 3° glide path.
   Ground effect makes the aircraft float in the flare. Under 150 ft/min is a "butter" landing, and anything over
   about 900 ft/min breaks the gear.
-- **Obstacles:** trees and buildings are solid.
+- **Obstacles:** trees, houses and airfield buildings are solid, and so is the other aircraft.
 
 ## Instruments
 
@@ -94,10 +118,13 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/aircraft.js` | Flight model: a rigid body with lift (with stall), drag (parasitic + induced, reduced in ground effect), side force, propeller thrust and slipstream, air density with altitude, control moments, static stability, damping, adverse yaw, wind-relative aerodynamics, and spring-damper landing gear with brakes, nose-wheel steering and grass vs asphalt friction. Also crash and structural-limit detection and landing scoring. Runs at 240 Hz in fixed steps. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |
 | `js/autopilot.js` | Heading and altitude hold with coordinated turns and stall protection. |
-| `js/terrain.js` | The island heightfield, terrain colours plus a multi-scale detail shader, the water shader (waves, Fresnel sky reflection, sun glint, shallow-water colour, shoreline foam), both airfields (runway markings drawn on a canvas, PAPI and approach lights, hangars, tower, windsocks) and instanced trees. Trees and buildings are also registered for collision. |
-| `js/sky.js` | Sky dome, time-of-day presets (sun position and colour, ambient light, fog), the shadow that follows the aircraft, and clouds. |
+| `js/terrain.js` | The island heightfield, terrain colours plus a multi-scale detail shader, the water shader (waves, Fresnel sky reflection, sun glint, shallow-water colour, shoreline foam), both airfields (runway markings drawn on a canvas, PAPI, approach and edge lights, hangars, tower, windsocks), villages of instanced houses with lit windows and street lights at night, and instanced trees. Trees and buildings are also registered for collision. |
+| `js/sky.js` | Sky dome with a procedural star field, time-of-day presets (sun position and colour, ambient light, fog), the shadow that follows the aircraft, and clouds. |
 | `js/model.js` | The aircraft: moving ailerons, flaps, elevator and rudder, propeller, wheels, nav lights, strobes and beacon, plus the cockpit interior with a live instrument panel, a yoke and a throttle. |
 | `js/hud.js` | Instruments, readouts, cockpit HUD, minimap and island map, ring guidance, landing report and messages. |
+| `js/missions.js` | Mission definitions, objectives, scripted events (such as the engine failure) and star ratings. |
+| `js/traffic.js` | The AI aircraft flying circuits with touch-and-goes along a smooth path, banking into its turns. |
+| `js/replay.js` | Records the last minute of flight at 30 Hz and plays it back with interpolation. |
 | `js/rings.js` | The ring course: ring heights are fitted to the terrain so every leg is flyable. |
 | `js/effects.js` | Particles: crash fire and smoke, tyre smoke, dust on grass, and wingtip vapour under high G. |
 | `js/input.js` | Keyboard, gamepad, touch and mouse look. |
