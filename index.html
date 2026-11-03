@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Skyhaven Flight</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Condensed:wght@500;700&display=swap" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <!-- The WebGL canvas is inserted before this by js/main.js -->
+  <canvas id="hud"></canvas>
+
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <h1>Skyhaven <span>Flight</span></h1>
+      <p class="sub">A light-aircraft flight simulator over a procedurally generated island.</p>
+      <div class="buttons">
+        <button id="resume" class="hidden">Resume</button>
+        <button data-spawn="runway">Take off from the runway</button>
+        <button data-spawn="approach">Final approach (landing practice)</button>
+        <button data-spawn="air">Start in the air</button>
+      </div>
+      <table id="keys"></table>
+      <p class="tip">Gamepad: left stick flies, right stick X is rudder and Y is throttle, LT brakes, A/Y flaps.</p>
+    </div>
+  </div>
+
+  <div id="crash" class="overlay hidden">
+    <div class="panel small">
+      <h2>Crashed</h2>
+      <p id="crashReason"></p>
+      <div class="buttons">
+        <button data-spawn="runway">Restart on the runway</button>
+        <button data-spawn="approach">Try the approach</button>
+        <button data-spawn="air">Start in the air</button>
+      </div>
+      <p class="tip">Enter restarts the last scenario.</p>
+    </div>
+  </div>
+
+  <noscript>This flight simulator needs JavaScript and WebGL.</noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
