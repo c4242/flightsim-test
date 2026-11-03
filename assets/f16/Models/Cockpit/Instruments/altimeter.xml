@@ -1,0 +1,300 @@
+<?xml version="1.0"?>
+
+
+
+<PropertyList>
+ <path>/Aircraft/Instruments-3d/altimeter/altimeter.ac</path>
+
+ <animation>
+  <type>rotate</type>
+  <object-name>needle</object-name>
+  <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+  </condition>
+  <property>instrumentation/altimeter/indicated-altitude-ft</property>
+  <factor>0.36</factor>  
+  <axis>
+   <x>-1</x>
+   <y>0</y>
+   <z>0</z>
+  </axis>
+ </animation>
+
+	<!-- altimeter drum counter -->
+	<animation>
+		<type>textranslate</type>
+		<object-name>drum-1</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+  </condition>
+		<property>instrumentation/altimeter/indicated-altitude-ft</property>
+		<factor>0.001</factor>
+		<offset>-100</offset>
+		<step>100</step>
+		<scroll>10</scroll>
+		<axis>
+			<x>0</x>
+			<y>-1</y>
+			<z>0</z>
+		</axis>
+	</animation>
+
+
+	<animation>
+		<type>textranslate</type>
+		<object-name>drum-2</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+  </condition>
+		<property>instrumentation/altimeter/indicated-altitude-ft</property>
+		<factor>0.0001</factor>
+		<offset>-1000</offset>
+		<step>1000</step>
+		<scroll>25</scroll>
+		<axis>
+			<x>0</x>
+			<y>-1</y>
+			<z>0</z>
+		</axis>
+	</animation>
+
+
+	<animation>
+		<type>textranslate</type>
+		<object-name>drum-3</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+  </condition>
+		<property>instrumentation/altimeter/indicated-altitude-ft</property>
+		<factor>0.00001</factor>
+		<offset>-10000</offset>
+		<step>10000</step>
+		<scroll>25</scroll>
+		<axis>
+			<x>0</x>
+			<y>-1</y>
+			<z>0</z>
+		</axis>
+	</animation>
+
+	<animation>
+		<type>select</type>
+		<object-name>negativ-flag</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+			<less-than>
+				<property>instrumentation/altimeter/indicated-altitude-ft</property>
+				<value>0</value>
+			</less-than>
+		</condition>
+	</animation>
+  
+	<animation>
+		<type>select</type>
+		<object-name>below-1000-flag</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+			<less-than>
+				<property>instrumentation/altimeter/indicated-altitude-ft</property>
+				<value>1000</value>
+			</less-than>
+		</condition>
+	</animation>
+  
+	<animation>
+		<type>select</type>
+		<object-name>below-10000-flag</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+			<less-than>
+				<property>instrumentation/altimeter/indicated-altitude-ft</property>
+				<value>10000</value>
+			</less-than>
+		</condition>
+	</animation>
+
+ <!-- barometer drum counter -->
+ <animation>
+  <type>textranslate</type>
+  <object-name>drum-inhg-1</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+  </condition>
+  <property>instrumentation/altimeter/setting-inhg</property>
+  <factor>10</factor>
+  <offset>-0.01</offset>
+  <axis>
+   <x>0</x>
+   <y>-1</y>
+   <z>0</z>
+  </axis>
+ </animation>
+
+ <animation>
+  <type>textranslate</type>
+  <object-name>drum-inhg-2</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+  </condition>
+  <property>instrumentation/altimeter/setting-inhg</property>
+  <factor>1</factor>
+  <offset>-0.1</offset>
+  <step>0.1</step>
+  <scroll>0.01</scroll>
+  <axis>
+   <x>0</x>
+   <y>-1</y>
+   <z>0</z>
+  </axis>
+ </animation>
+
+ <animation>
+  <type>textranslate</type>
+  <object-name>drum-inhg-3</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+  </condition>
+  <property>instrumentation/altimeter/setting-inhg</property>
+  <factor>0.1</factor>
+  <offset>-1</offset>
+  <step>1</step>
+  <scroll>0.01</scroll>
+  <axis>
+   <x>0</x>
+   <y>-1</y>
+   <z>0</z>
+  </axis>
+ </animation>
+
+ <animation>
+  <type>textranslate</type>
+  <object-name>drum-inhg-4</object-name>
+    <condition>
+      <greater-than-equals>
+          <property>fdm/jsbsim/elec/bus/batt-2</property>
+          <value>20</value>
+      </greater-than-equals>
+  </condition>
+  <property>instrumentation/altimeter/setting-inhg</property>
+  <factor>0.01</factor>
+  <offset>-10</offset>
+  <step>10</step>
+  <scroll>0.01</scroll>
+  <axis>
+   <x>0</x>
+   <y>-1</y>
+   <z>0</z>
+  </axis>
+ </animation>
+
+ <!-- Altimeter Ingh Setting Knob -->
+ <animation>
+        <type>knob</type>
+        <object-name>knob</object-name>
+        <property>instrumentation/altimeter/setting-inhg</property>
+        <factor>-180</factor>
+        <offset-deg>0</offset-deg>
+        <interval-sec>0.2</interval-sec>
+        <center>
+            <x-m>  0.020503 </x-m>
+            <y-m> -0.03165 </y-m>
+            <z-m> -0.028811 </z-m>
+        </center>
+        <axis>
+            <x> 1.0 </x>
+            <y> 0.0 </y>
+            <z> 0.0 </z>
+        </axis>
+        <increase>
+            <binding>
+                <command>property-adjust</command>
+                <property>instrumentation/altimeter/setting-inhg</property>
+                <factor>1</factor>
+                <step>0.005</step>
+                <min>26</min>
+                <max>33</max>
+                <wrap>false</wrap>
+            </binding>
+        </increase>
+        <decrease>
+            <binding>
+                <command>property-adjust</command>
+                <property>instrumentation/altimeter/setting-inhg</property>
+                <factor>1</factor>
+                <step>-0.005</step>
+                <min>26</min>
+                <max>33</max>
+                <wrap>false</wrap>
+            </binding>
+        </decrease>
+    </animation>
+    
+ <animation>
+  <type>select</type>
+  <object-name>ingh-knob-left</object-name>
+  <object-name>ingh-knob-right</object-name>
+  <condition>
+    <equals>
+      <value>0</value>
+      <value>1</value>
+    </equals>
+  </condition>
+ </animation>
+
+
+ <!-- lighting -->
+  <effect>
+        <inherits-from>Aircraft/f16/Models/Effects/model-interior/panel-standard</inherits-from>
+        <parameters>
+            <implicit-lightmap-enabled type="int">0</implicit-lightmap-enabled>
+        </parameters>
+        <object-name>mount</object-name>
+        <object-name>knobs</object-name>
+  
+ </effect>
+
+ <animation>
+  <object-name>face</object-name>
+  <object-name>drums</object-name>
+  <object-name>needle-w</object-name>
+  <type>material</type>
+  <emission>
+   <factor-prop>controls/lighting/lighting-panel/pri-inst-pnl</factor-prop>
+   <red>0.6</red>
+   <green>0.4</green>
+   <blue>0.3</blue>
+  </emission>
+ </animation>
+
+
+</PropertyList>

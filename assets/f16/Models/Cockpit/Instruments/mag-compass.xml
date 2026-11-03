@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+
+<PropertyList>
+
+ <path>mag-compass.ac</path>
+
+  <!-- lighting -->
+ <effect>
+        <inherits-from>Aircraft/f16/Models/Effects/model-interior/panel-standard</inherits-from>
+        <parameters>
+            <implicit-lightmap-enabled type="int">0</implicit-lightmap-enabled>
+        </parameters>
+        <object-name>poly</object-name>
+  
+ </effect>
+
+ <animation>
+  <type>rotate</type>
+  <object-name>ring</object-name>
+  <property>instrumentation/magnetic-compass/indicated-heading-deg</property>
+  <axis>
+   <x>0.0</x>
+   <y>0.0</y>
+   <z>1.0</z>
+  </axis>
+ </animation>
+
+ <!-- lighting -->
+ <animation>
+  <object-name>ring</object-name>
+  <type>material</type>
+  <emission>
+   <factor-prop>controls/lighting/lighting-panel/pri-inst-pnl</factor-prop>
+   <red>0.6</red>
+   <green>0.4</green>
+   <blue>0.3</blue>
+  </emission>
+ </animation>
+
+</PropertyList>

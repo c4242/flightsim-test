@@ -70,6 +70,16 @@ Checked performance from the test scripts:
 | Approach | 13° AoA at ≈150 KCAS | 13° AoA, 140–160 KCAS |
 | Landing roll without drag chute | ≈1,000 m | 760–1,070 m |
 
+**Cockpit:** the cockpit view uses the FlightGear F-16's 3D cockpit:
+- **What's in it:** the instrument panel, ICP keypad, side consoles, throttle, side-stick and seat, inside the
+  real fuselage and canopy frame.
+- **Moving parts:** the airspeed, attitude, AoA, VVI, HSI and standby instruments, plus the stick, throttle,
+  pedals and gear handle, are driven by the simulation.
+- **Screens:** the two MFDs show this game's engine and attitude pages.
+- **Loading:** the cockpit loads the first time you switch to the cockpit view, and the simple cockpit shows
+  until then.
+- **Eye point:** FlightGear's own pilot eye point, view angle and field of view (68.5°) are used.
+
 **3D model:** the F-16 is the detailed model from the open-source
 [FlightGear F-16](https://github.com/NikolaiVChr/f16), with its textures, markings, wingtip AIM-9Ls and
 GE nozzle. Its gear, gear doors, stabilators, flaperons, leading-edge flaps, rudder, speedbrakes and
@@ -219,7 +229,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 
 ## Credits and licences
 
-- **F-16 3D model, textures and AIM-9L:** from the FlightGear F-16 by Erik Hofman, Nikolai V. Chr. and
+- **F-16 3D model, 3D cockpit, textures and AIM-9L:** from the FlightGear F-16 by Erik Hofman, Nikolai V. Chr. and
   contributors, under the GNU General Public License v2 or later. See
   [`assets/f16/NOTICE.md`](assets/f16/NOTICE.md), `assets/f16/LICENSE` and `assets/f16/authors.txt`.
 - **Everything else** in this repository was written for this project.
@@ -233,6 +243,8 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/planes/skylark.js` | The light trainer's aerodynamics, propeller engine and direct control surfaces. |
 | `js/atmosphere.js` | International Standard Atmosphere, Mach number and calibrated airspeed. |
 | `js/acloader.js` | Loader for AC3D (`.ac`) models, the format FlightGear uses, keeping named parts for animation. |
+| `js/fgmodel.js` | Loader for FlightGear model XML: sub-models with offsets, conditions, and rotate/translate/select/textranslate/spin animations. |
+| `js/cockpit-fg.js` | The FlightGear F-16 cockpit: maps the flight state onto the properties its instruments read, and puts our MFD pages on its screens. |
 | `js/model-f16fg.js` | Loads the FlightGear F-16 and animates its gear, control surfaces, speedbrakes and nozzle from the flight state. |
 | `js/model-f16.js` | The F-16 wrapper: cockpit interior, afterburner flame and lights, plus the simple fallback model. Its parts: moving stabilators, flaperons and rudder, speedbrakes, retracting gear, afterburner plume, wingtip AIM-9s, landing light and cockpit. |
 | `js/nav.js` | The ILS: localizer, glideslope and DME for both runway ends. |

@@ -118,7 +118,8 @@ const chaseQuat = new THREE.Quaternion();
 const lookQuat = new THREE.Quaternion();
 const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const tilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.1);
-const cockpitTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.1);
+const _xAxis = new THREE.Vector3(1, 0, 0);
+const cockpitTilt = new THREE.Quaternion().setFromAxisAngle(_xAxis, -0.1);
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const towers = [
@@ -154,8 +155,9 @@ function updateCamera(dt) {
   model.setCockpitView(cameraMode === 'cockpit');
 
   if (cameraMode === 'cockpit') {
-    fov = 74;
+    fov = model.cockpitFov ?? 74;
     camera.position.copy(_v.copy(model.eye).applyQuaternion(aircraft.quat).add(aircraft.pos));
+    cockpitTilt.setFromAxisAngle(_xAxis, model.viewPitch ?? -0.1);
     camera.quaternion.copy(aircraft.quat).multiply(cockpitTilt).multiply(lookQuat);
   } else if (cameraMode === 'tower') {
     let best = towers[0];
@@ -602,6 +604,7 @@ function frame(now) {
     effects.update(dt);
   }
 
+  model.nav = replaying || aircraft.crashed ? null : ilsGuidance(aircraft.pos, aircraft.heading);
   model.object.position.copy(subject.pos);
   model.object.quaternion.copy(subject.quat);
   model.update(subject, paused && !replaying ? 0 : dt);
@@ -611,7 +614,11 @@ function frame(now) {
   if (cameraMode === 'cockpit' && !replaying) {
     panelTimer -= dt;
     if (panelTimer <= 0) {
-      hud.drawPanelTexture(model.panelCanvas, aircraft, autopilot);
+      if (model.fgCockpit) {
+        hud.drawMfdPage(model.mfdCanvases[0], aircraft, 'engine');
+        hud.drawMfdPage(model.mfdCanvases[1], aircraft, 'attitude');
+        for (const t of model.fgCockpit.mfdTextures) t.needsUpdate = true;
+      } else hud.drawPanelTexture(model.panelCanvas, aircraft, autopilot);
       model.panelTex.needsUpdate = true;
       panelTimer = 1 / 30;
     }
@@ -636,4 +643,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

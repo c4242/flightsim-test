@@ -190,10 +190,12 @@ export async function loadFlightGearF16(renderer) {
   }
 
   const hideInCockpit = COCKPIT_HIDE.flatMap((n) => objects.get(n) ?? []);
+  const glassParts = ['CanopyForwardInside', 'CanopyForwardOutside', 'CanopyBackInside', 'CanopyBackOutside'].flatMap((n) => objects.get(n) ?? []);
   return {
     root,
     objects,
     update,
     setCockpitView(on) { for (const g of hideInCockpit) g.visible = !on; },
+    setGlassVisible(on) { for (const g of glassParts) g.visible = on; },
   };
 }

@@ -1,0 +1,549 @@
+﻿<PropertyList>
+
+ <!-- Horizontal Situation Indicator -->
+ <name>HSI</name>
+ <path>hsi.ac</path>
+
+
+
+
+
+
+
+<!-- TODO: enable deviation lines for STPT and ILS -->
+
+
+
+
+
+
+
+
+
+ <!--<animation>
+  <type>select</type>
+  <object-name>hsi</object-name>
+  <condition>
+   <property>sim/current-view/internal</property>
+  </condition>
+ </animation>-->
+
+ <!-- off-flag -->
+ <!-- TODO: using simple electrical scheme for now -->
+ <animation>
+  <type>select</type>
+  <object-name>HSI_off-flag</object-name>
+  <condition>
+   <less-than>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </less-than> 
+  </condition>
+ </animation>
+
+<!-- Compass Card -->
+ <animation>
+  <type>rotate</type>
+  <object-name>HSI_compass-card</object-name>
+  <property>orientation/heading-magnetic-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0</y-m>
+   <z-m>-0.0043</z-m>
+  </center>
+  <axis>
+   <x>1</x>
+  </axis>
+ </animation>
+
+ <!-- TACAN mode -->
+ <animation>
+  <type>select</type>
+  <object-name>HSI_brg-tcn-needle-on</object-name>
+  <condition>
+   <and>
+     <equals>
+      <property>f16/avionics/hsi-show-bearing</property> 
+      <value>1</value>
+     </equals>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property> 
+    <value>100</value>
+   </greater-than-equals>
+   </and>
+  </condition>
+ </animation>
+  <!--<animation>
+  <type>rotate</type>
+  <object-name>HSI_brg-tcn-needle-on</object-name>
+  <property>orientation/heading-magnetic-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0</y-m>
+   <z-m>-0.0043</z-m>
+  </center>
+  <axis>
+   <x>1</x>
+  </axis>
+ </animation>-->
+ <animation>
+  <type>rotate</type>
+  <object-name>HSI_brg-tcn-needle-on</object-name>
+  <property>f16/avionics/hsi-bearing-rel</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0</y-m>
+   <z-m>-0.0043</z-m>
+  </center>
+  <axis>
+   <x>-1</x>
+  </axis>
+ </animation>
+ 
+ <animation>
+  <type>select</type>
+  <object-name>HSI_brg-needle-off</object-name>
+  <condition>
+    <equals>
+      <property>f16/avionics/hsi-show-bearing</property> 
+      <value>0</value>
+     </equals>
+  </condition>
+ </animation>
+ <animation>
+  <type>rotate</type>
+  <object-name>HSI_brg-needle-off</object-name>
+  <property>orientation/heading-magnetic-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0</y-m>
+   <z-m>-0.0043</z-m>
+  </center>
+  <axis>
+   <x>1</x>
+  </axis>
+ </animation>
+
+ <animation>
+  <type>rotate</type>
+  <object-name>HSI_course-needle</object-name>
+  <object-name>HSI_tcn-cdi-on</object-name>
+  <object-name>HSI_cdi-bkg</object-name>
+  <object-name>HSI_tcn-tofrom-to</object-name>
+  <object-name>HSI_tcn-tofrom-from</object-name>
+  <object-name>HSI_brg-validity-flag</object-name>
+  <property>orientation/heading-magnetic-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0</y-m>
+   <z-m>-0.0043</z-m>
+  </center>
+  <axis><x>1</x></axis>
+ </animation>
+ 
+ <animation>
+  <type>rotate</type>
+  <object-name>HSI_course-needle</object-name>
+  <object-name>HSI_tcn-cdi-on</object-name>
+  <object-name>HSI_vor-cdi-off</object-name>
+  <object-name>HSI_cdi-bkg</object-name>
+  <object-name>HSI_tcn-tofrom-to</object-name>
+  <object-name>HSI_tcn-tofrom-from</object-name>
+  <object-name>HSI_brg-validity-flag</object-name>
+  <property>instrumentation/nav[0]/radials/selected-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0</y-m>
+   <z-m>-0.0043</z-m>
+  </center>
+  <axis><x>-1</x></axis>
+ </animation>
+ 
+ <animation>
+  <type>rotate</type>
+  <object-name>hdg-marker</object-name>
+  <property>orientation/heading-magnetic-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0</y-m>
+   <z-m>-0.0043</z-m>
+  </center>
+  <axis><x>1</x></axis>
+ </animation>
+ <animation>
+  <type>rotate</type>
+  <object-name>hdg-marker</object-name>
+  <property>instrumentation/heading-indicator/heading-bug-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0</y-m>
+   <z-m>-0.0043</z-m>
+  </center>
+  <axis><x>-1</x></axis>
+ </animation>
+
+
+ <animation>
+  <type>select</type>
+  <object-name>HSI_tcn-tofrom-from</object-name>
+  <condition>
+   <and>
+     <equals>
+      <property>f16/avionics/hsi-from</property> 
+      <value>1</value>
+     </equals>
+     <greater-than-equals>
+      <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+      <value>100</value>
+     </greater-than-equals>
+   </and>
+  </condition>
+ </animation>
+ <animation>
+  <type>select</type>
+  <object-name>HSI_tcn-tofrom-to</object-name>
+  <condition>
+   <and>
+    <equals>
+      <property>f16/avionics/hsi-to</property> 
+      <value>1</value>
+     </equals>
+     <greater-than-equals>
+      <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+      <value>100</value>
+     </greater-than-equals>
+   </and>
+  </condition>
+ </animation>
+ 
+ <animation>
+  <type>translate</type>
+  <object-name>HSI_tcn-cdi-on</object-name>
+  <property>f16/avionics/hsi-cdi</property>
+  <factor>0.016</factor>
+  <axis><y>1</y></axis>
+ </animation>
+ 
+
+
+ <!-- HDG knob -->
+ <animation>
+        <type>knob</type>
+        <object-name>HSI_hdg-knob</object-name>
+        <property>instrumentation/heading-indicator/heading-bug-deg</property>
+        <factor>1</factor>
+        <offset-deg>0</offset-deg>
+        <interval-sec>0.075</interval-sec>
+        <center>
+            <x-m>0</x-m>
+             <y-m>-0.0318</y-m>
+             <z-m>-0.0320</z-m>
+        </center>
+        <axis>
+            <x>-1</x>
+            <y>0</y>
+            <z>0</z>
+        </axis>        
+        <increase>
+            <binding>
+                <command>property-adjust</command>
+                <property>instrumentation/heading-indicator/heading-bug-deg</property>
+                <step>1</step>
+                <min>0</min>
+                <max>360</max>
+                <wrap>true</wrap>
+           </binding>
+        </increase>
+        <decrease>
+            <binding>
+                <command>property-adjust</command>
+                <property>instrumentation/heading-indicator/heading-bug-deg</property>
+                <step>-1</step>
+                <min>0</min>
+                <max>360</max>                
+                <wrap>true</wrap>
+           </binding>
+        </decrease>
+        <hovered>
+            <binding>
+                <command>set-tooltip</command>
+                <tooltip-id>hdg</tooltip-id>
+                <label>Heading</label>
+            </binding>
+        </hovered>
+    </animation>
+
+
+ <!-- COURSE Knob -->
+ <animation>
+        <type>knob</type>
+        <object-name>HSI_course-knob</object-name>
+        <property>instrumentation/nav[0]/radials/selected-deg</property>
+        <factor>1</factor>
+        <offset-deg>0</offset-deg>
+        <interval-sec>0.075</interval-sec>
+        <center>
+            <x-m>0</x-m>
+           <y-m>0.0315</y-m>
+           <z-m>-0.0320</z-m>
+        </center>
+        <axis>
+            <x>-1</x>
+            <y>0</y>
+            <z>0</z>
+        </axis>        
+        <increase>
+            <binding>
+                <command>property-adjust</command>
+                <property>instrumentation/nav[0]/radials/selected-deg</property>
+                <step>1</step>
+                <min>0</min>
+                <max>360</max>
+                <wrap>true</wrap>
+           </binding>
+        </increase>
+        <decrease>
+            <binding>
+                <command>property-adjust</command>
+                <property>instrumentation/nav[0]/radials/selected-deg</property>
+                <step>-1</step>
+                <min>0</min>
+                <max>360</max>                
+                <wrap>true</wrap>
+           </binding>
+        </decrease>
+        <hovered>
+            <binding>
+                <command>set-tooltip</command>
+                <tooltip-id>crs</tooltip-id>
+                <label>Course</label>
+            </binding>
+        </hovered>
+    </animation>
+
+ <!-- TACAN Distance Digital Display -->
+ <animation>
+  <type>select</type>
+  <object-name>HSI_out-of-range-flag</object-name>
+  <condition>
+    <and>
+           <equals>
+            <property>f16/avionics/hsi-dist</property> 
+            <value>-1</value>
+           </equals>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+ </and>
+  </condition>
+ </animation>
+
+<!-- STPT/TACAN range -->
+  <animation>
+  <type>textranslate</type>
+  <object-name>HSI_miles-drum-1</object-name>
+  <property>f16/avionics/hsi-dist</property>
+  <condition>
+   <greater-than-equals>
+      <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+      <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <factor>0.1</factor>
+  <offset>-1</offset>
+  <axis><y>-1</y></axis>
+ </animation>
+ <animation>
+  <type>textranslate</type>
+  <object-name>HSI_miles-drum-2</object-name>
+  <property>f16/avionics/hsi-dist</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <factor>0.01</factor>
+  <offset>-10</offset>
+  <step>10</step>
+  <scroll>0.5</scroll>
+  <axis><y>-1</y></axis>
+ </animation>
+ <animation>
+  <type>textranslate</type>
+  <object-name>HSI_miles-drum-3</object-name>
+  <property>f16/avionics/hsi-dist</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <factor>0.001</factor>
+  <offset>-100</offset>
+  <step>100</step>
+  <scroll>0.5</scroll>
+  <axis><y>-1</y></axis>
+ </animation>
+
+ 
+
+
+
+
+
+<!-- Course Digital Display -->
+ <animation>
+  <type>textranslate</type>
+  <object-name>HSI_course-drum-1</object-name>
+  <property>instrumentation/nav[0]/radials/selected-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <factor>0.1</factor>
+  <offset>-1</offset>
+  <axis><y>-1</y></axis>
+ </animation>
+ <animation>
+  <type>textranslate</type>
+  <object-name>HSI_course-drum-2</object-name>
+  <property>instrumentation/nav[0]/radials/selected-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <factor>0.01</factor>
+  <offset>-10</offset>
+  <step>10</step>
+  <scroll>0.5</scroll>
+  <axis><y>-1</y></axis>
+ </animation>
+ <animation>
+  <type>textranslate</type>
+  <object-name>HSI_course-drum-3</object-name>
+  <property>instrumentation/nav[0]/radials/selected-deg</property>
+  <condition>
+   <greater-than-equals>
+    <property>fdm/jsbsim/elec/bus/emergency-ac-2</property>
+    <value>100</value>
+   </greater-than-equals>
+  </condition>
+  <factor>0.001</factor>
+  <offset>-100</offset>
+  <step>100</step>
+  <scroll>0.5</scroll>
+  <axis><y>-1</y></axis>
+ </animation>
+
+ <!-- For now, hide everything else -->
+ <animation>
+      <type>select</type>
+      <condition>
+       <equals>
+        <property>sim/model/f16/instrumentation/nav-development-stage</property>
+        <value>advanced</value>
+       </equals>
+      </condition>
+      <object-name>HSI_vor-tofrom-to</object-name>
+      <object-name>HSI_vor-tofrom-from</object-name>
+      <object-name>HSI_vor-cdi-off</object-name>
+      <object-name>HSI_vor-cdi-on</object-name>
+      <object-name>HSI_cdi-off</object-name>
+      <object-name>HSI_brg-vor-needle-on</object-name>
+  </animation>
+
+<animation>
+  <object-name>HSI_brg-validity-flag</object-name>
+  <type>select</type>
+  <condition>
+   <equals>
+    <property>f16/avionics/hsi-cdi-invalid</property>
+    <value>1</value>
+   </equals>
+  </condition>
+</animation>
+
+
+ <!-- lighting -->
+ <effect>
+        <inherits-from>Aircraft/f16/Models/Effects/model-interior/panel-standard</inherits-from>
+        <parameters>
+            <implicit-lightmap-enabled type="int">0</implicit-lightmap-enabled>
+        </parameters>
+        <object-name>HSI_knobs</object-name>
+        <object-name>HSI_mount</object-name>
+  
+ </effect>
+
+ <animation>
+  <object-name>HSI_needles</object-name>
+  <object-name>HSI_cdi</object-name>
+  <object-name>HSI_drums</object-name>
+  <object-name>HSI_compass-card</object-name>
+  <object-name>HSI_aircraft-symbol</object-name>
+  <object-name>HSI_off-flag</object-name>
+  <object-name>hdg-marker</object-name>
+  <type>material</type>
+  <emission>
+   <factor-prop>controls/lighting/lighting-panel/pri-inst-pnl</factor-prop>
+   <red>0.6</red>
+   <green>0.4</green>
+   <blue>0.3</blue>
+  </emission>
+ </animation>
+
+</PropertyList>

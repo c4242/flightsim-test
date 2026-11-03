@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { loadFlightGearF16 } from './model-f16fg.js';
+import { loadFlightGearCockpit, FG_EYE, FG_VIEW_PITCH, FG_FOV } from './cockpit-fg.js';
 
 const DEG = Math.PI / 180;
 
@@ -250,6 +251,28 @@ export function createF16Model({ renderer } = {}) {
   let cockpitView = false;
   const eye = new THREE.Vector3(0, 0.9, -4.75);
 
+  // ---------- FlightGear cockpit (loaded the first time the cockpit view is used) ----------
+  const mfdCanvases = [0, 1].map(() => { const c = document.createElement('canvas'); c.width = c.height = 512; return c; });
+  let fgPit = null, fgPitLoading = false;
+  const api = { viewPitch: -0.1 };
+  function loadCockpit() {
+    if (fgPit || fgPitLoading || !fg) return;
+    fgPitLoading = true;
+    loadFlightGearCockpit({ renderer, mfdCanvases }).then((p) => {
+      fgPit = p;
+      root.add(p.object);
+      p.object.visible = cockpitView;
+      cockpit.visible = false;
+      eye.copy(FG_EYE);
+      api.viewPitch = FG_VIEW_PITCH;
+      api.cockpitFov = FG_FOV;
+      // The FlightGear cockpit sits inside the real fuselage and canopy, so keep them visible
+      // (apart from the canopy glass, which only looks right from outside).
+      fg.setCockpitView(false);
+      fg.setGlassVisible(!cockpitView);
+    }).catch((err) => { fgPitLoading = false; console.warn('FlightGear cockpit not loaded, using the simple cockpit:', err); });
+  }
+
   // ---------- FlightGear model ----------
   let fg = null;
   const keep = new Set([cockpit, flame, core, exhaustGlow, landingLight, landingLight.target, landingGlow, beacon]);
@@ -269,15 +292,18 @@ export function createF16Model({ renderer } = {}) {
       const sp = light(c, x, y, z, s);
       keep.add(sp);
     }
-    if (cockpitView) m.setCockpitView(true);
+    if (cockpitView) { m.setCockpitView(true); loadCockpit(); }
   }).catch((err) => console.warn('FlightGear F-16 model not loaded, using the simple model:', err));
 
-  return {
+  // defineProperties (not Object.assign) so the getters below stay live.
+  return Object.defineProperties(api, Object.getOwnPropertyDescriptors({
     object: root,
     cockpit,
     panelCanvas,
     panelTex,
     eye,
+    mfdCanvases,
+    get fgCockpit() { return fgPit; },
     get detailed() { return !!fg; },
     setLights(n) {
       night = n;
@@ -286,8 +312,9 @@ export function createF16Model({ renderer } = {}) {
     },
     setCockpitView(on) {
       cockpitView = on;
-      cockpit.visible = on;
-      if (fg) { fg.setCockpitView(on); return; }
+      cockpit.visible = on && !fgPit;
+      if (fgPit) fgPit.object.visible = on;
+      if (fg) { fg.setCockpitView(on && !fgPit); fg.setGlassVisible(!(on && fgPit)); if (on) loadCockpit(); return; }
       cabin.visible = !on;
       cabinFront.visible = !on;
       canopy.visible = !on;
@@ -310,12 +337,13 @@ export function createF16Model({ renderer } = {}) {
       coreMat.opacity = ab > 0.01 ? 0.5 : 0;
       exhaustGlow.material.opacity = ab > 0.01 ? 0.6 + ab * 0.4 : Math.max(0, ((ac.n2 ?? 0) - 0.9) * 2);
       beacon.visible = (t % 1.0) < 0.1;
+      if (fgPit && cockpitView) fgPit.update(ac, dt, api.nav ?? null);
       // Cockpit controls.
       stick.rotation.x = -c.elevator * 0.25;
       stick.rotation.z = -c.aileron * 0.25;
       thrGrip.position.z = -4.8 - c.throttle * 0.12;
     },
-  };
+  }));
 
   function updatePrimitive(ac, dt) {
       const c = ac.controls;

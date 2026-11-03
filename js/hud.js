@@ -917,6 +917,36 @@ export function createHud(canvas) {
     g.font = `bold 15px ${FONT}`; g.fillText(ac.speedbrake > 0.02 ? `${Math.round(ac.speedbrake * 60)}°` : 'IN', sbx, y0 + 40);
   }
 
+  // One MFD page drawn to fill a canvas (used on the FlightGear cockpit's screens).
+  function drawMfdPage(cv, ac, page) {
+    const prev = g;
+    g = cv.getContext('2d');
+    const S = cv.width;
+    g.fillStyle = '#020604'; g.fillRect(0, 0, S, S);
+    g.strokeStyle = '#1d3a26'; g.lineWidth = 2; g.strokeRect(6, 6, S - 12, S - 12);
+    g.fillStyle = '#56ff86'; g.font = `bold ${S * 0.055}px ${FONT}`; g.textBaseline = 'top'; g.textAlign = 'center';
+    // Option labels round the edge, like the real OSB legends.
+    const labels = page === 'engine' ? ['ENG', 'FUEL', 'SMS', 'HSD', 'SWAP'] : ['ADI', 'HSI', 'ILS', 'NAV', 'SWAP'];
+    labels.forEach((l, i) => g.fillText(l, S * (0.1 + i * 0.2), S * 0.03));
+    if (page === 'engine') {
+      g.textAlign = 'left'; g.font = `bold ${S * 0.075}px ${FONT}`;
+      const rows = [
+        ['RPM', `${Math.round(ac.n2 * 100)} %`], ['NOZ', `${Math.round(ac.nozzle * 100)} %`], ['FTIT', `${ftit(ac)} C`],
+        ['FF', `${Math.round(ac.fuelFlow / 100) * 100}`], ['FUEL', `${Math.round(ac.fuel * kgToLb / 10) * 10}`],
+        ['THR', ac.abLit ? `AB ${Math.round(ac.ab * 100)}` : `${Math.round(Math.min(1, ac.controls.throttle / 0.8) * 100)} %`],
+        ['GEAR', ac.gearDown >= 0.999 ? 'DOWN' : ac.gearDown > 0 ? 'TRANSIT' : 'UP'],
+      ];
+      rows.forEach(([k, v], i) => {
+        g.fillStyle = '#7fe0a0'; g.fillText(k, S * 0.1, S * (0.16 + i * 0.11));
+        g.fillStyle = '#ffffff'; g.fillText(v, S * 0.42, S * (0.16 + i * 0.11));
+      });
+    } else {
+      attitude(S / 2, S * 0.36, S * 0.22, ac.pitch, ac.roll);
+      headingIndicator(S / 2, S * 0.78, S * 0.16, ac.heading, null);
+    }
+    g = prev;
+  }
+
   // Cockpit instrument panel for the F-16: engine MFD, attitude/heading MFD and annunciators.
   function drawJetPanelTexture(cv, ac) {
     const prev = g;
@@ -1017,6 +1047,7 @@ export function createHud(canvas) {
   return {
     draw,
     message,
+    drawMfdPage,
     drawPanelTexture(cv, ac, ap) { if (ac.type?.kind === 'jet') drawJetPanelTexture(cv, ac); else drawPanelTexture(cv, ac, ap); },
     showLanding(e, aim) { landing = { e, aim, t: 7 }; },
     togglePanel() { showPanel = !showPanel; },

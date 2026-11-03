@@ -45,7 +45,7 @@ export function parseAC(text, opts) {
     const m = acMats[mi] ?? acMats[0];
     let mat = opts.material?.(m, tex, twoSided, objName);
     if (!mat) {
-      const map = tex ? opts.textures?.[tex.split('/').pop()] ?? null : null;
+      const map = tex ? (opts.textureFor ? opts.textureFor(tex) : opts.textures?.[tex.split('/').pop()] ?? null) : null;
       mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(m.rgb[0], m.rgb[1], m.rgb[2]),
         emissive: new THREE.Color(m.emis[0], m.emis[1], m.emis[2]),
@@ -134,11 +134,25 @@ export function parseAC(text, opts) {
       local.multiply(r);
     }
     const world = parentMatrix.clone().multiply(local);
-    if (verts && surfaces.length && !opts.skip?.has(name)) buildObject(name, verts, surfaces, world, tex, texrep, texoff, crease);
+    const skipped = opts.skip?.has(name);
+    let node = null;
+    if (verts && surfaces.length && !skipped) node = buildObject(name, verts, surfaces, world, tex, texrep, texoff, crease);
+    if (opts.hierarchy && !node) {
+      // Empty group objects still need a node so animations can target them.
+      node = new THREE.Group();
+      node.name = name;
+      node.matrixAutoUpdate = false;
+      if (!skipped) { if (objects.has(name)) objects.get(name).push(node); else objects.set(name, [node]); }
+    }
     for (let k = 0; k < kids; k++) {
       while (i < lines.length && !lines[i].startsWith('OBJECT')) i++;
-      if (i < lines.length) parseObject(world);
+      if (i < lines.length) {
+        const child = parseObject(world);
+        if (opts.hierarchy && child) node.add(child);
+      }
     }
+    if (opts.hierarchy && skipped) node.visible = false;
+    return node;
   }
 
   const _p = new THREE.Vector3();
@@ -210,12 +224,16 @@ export function parseAC(text, opts) {
       group.add(mesh);
     }
     group.matrixAutoUpdate = false;
-    root.add(group);
+    if (!opts.hierarchy) root.add(group);
     if (objects.has(name)) objects.get(name).push(group); else objects.set(name, [group]);
+    return group;
   }
 
   while (i < lines.length && !lines[i].startsWith('OBJECT')) i++;
-  if (i < lines.length) parseObject(new THREE.Matrix4());
+  if (i < lines.length) {
+    const top = parseObject(new THREE.Matrix4());
+    if (opts.hierarchy && top) root.add(top);
+  }
   return { root, objects };
 }
 

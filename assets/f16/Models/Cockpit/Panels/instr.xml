@@ -1,0 +1,167 @@
+<?xml version="1.0"?>
+
+<PropertyList>
+
+ <path>instr.ac</path>
+
+ <effect>
+        <inherits-from>Aircraft/f16/Models/Effects/model-interior/panel-standard</inherits-from>
+        <parameters>
+            <implicit-lightmap-threshold-low type="float">0</implicit-lightmap-threshold-low>
+        <implicit-lightmap-threshold-high type="float">0.39</implicit-lightmap-threshold-high>
+            <!--<implicit-lightmap-intensity><use>controls/lighting/lighting-panel/data-entry-display</use></implicit-lightmap-intensity> this is ICP not DED panel, so should not have DED control -->
+        </parameters>
+        <object-name>INSTR_mode-knob</object-name>
+        <object-name>INSTR_mount</object-name>
+        <object-name>INSTR_mount50</object-name>
+        <object-name>INSTR_mode-knob</object-name>
+        <object-name>INSTR_hdg-knob</object-name>
+  </effect>
+
+ <!-- Mode knob -->
+ 
+ <animation>
+	<type>knob</type>
+	<object-name>INSTR_mode-knob</object-name>
+	<property>sim/model/f16/controls/navigation/instrument-mode-panel/mode/rotary-switch-knob</property>
+	<factor>40</factor>
+	<repeatable>true</repeatable>
+	<drag-direction>horizontal</drag-direction>
+	<drag-scale-px>10</drag-scale-px><!-- 10 is default -->
+	<center>
+	   <x-m>0</x-m>
+	   <y-m>0</y-m>
+	   <z-m>0.0188</z-m>
+	</center>
+	<axis>
+	   <x>-1</x>
+	   <y>0</y>
+	   <z>0</z>
+	</axis>
+	<action>
+		<binding>
+			<command>property-adjust</command>
+			<property>sim/model/f16/controls/navigation/instrument-mode-panel/mode/rotary-switch-knob</property>
+			<factor>1</factor>
+			<min>0</min>
+			<max>3</max>
+			<wrap>false</wrap>
+		</binding>
+	</action>
+ </animation>
+ 
+  <animation>
+  <type>select</type>
+  <object-name>INSTR_mode-knob</object-name>
+  <object-name>INSTR_hdg-knob</object-name>
+  <object-name>INSTR_mount</object-name>
+  <condition>
+    <or>
+      <equals>
+       <property>sim/variant-id</property>
+       <value>0</value>
+      </equals>
+      <equals>
+       <property>sim/variant-id</property>
+       <value>1</value>
+      </equals>
+      <equals>
+       <property>sim/variant-id</property>
+       <value>3</value>
+      </equals>
+    </or>
+   </condition>
+ </animation>
+
+ <animation>
+  <type>select</type>
+  <object-name>INSTR_mount50</object-name>
+  <condition>
+    <or>
+      <equals>
+       <property>sim/variant-id</property>
+       <value>2</value>
+      </equals>
+      <equals>
+       <property>sim/variant-id</property>
+       <value>4</value>
+      </equals>
+      <equals>
+       <property>sim/variant-id</property>
+       <value>5</value>
+      </equals>
+      <greater-than-equals>
+       <property>sim/variant-id</property>
+       <value>6</value>
+      </greater-than-equals>
+    </or>
+   </condition>
+ </animation>
+
+ 
+ <!-- HDG knob - pick animation-->
+
+ <!-- Set the INS heading to a known magnetic heading in the event of an INS
+      failure (indicated by the AUX flag on the ADI). --> 
+
+  <!-- <animation>
+  <name>heading-ccw</name>
+  <type>pick</type>
+  <visible>true</visible>
+  <object-name>INSTR_hdg-knob-left</object-name>
+  <action>
+   <button>0</button>
+   <repeatable>true</repeatable>
+   <interval-sec>0.2</interval-sec>
+   <binding>
+    <command>property-adjust</command>
+    <property>instrumentation/heading-indicator/heading-bug-deg</property> FIXME !!!
+    <step>-1</step>
+    <min>-180</min>
+    <max>180</max>
+    <wrap>true</wrap>
+   </binding>
+  </action>
+ </animation>
+
+ <animation>
+  <name>heading-cw</name>
+  <type>pick</type>
+  <visible>true</visible>
+  <object-name>INSTR_hdg-knob-right</object-name>
+  <action>
+   <button>0</button>
+   <repeatable>true</repeatable>
+   <interval-sec>0.2</interval-sec>
+   <binding>
+    <command>property-adjust</command>
+    <property>instrumentation/heading-indicator/heading-bug-deg</property> FIXME !!!
+    <step>1</step>
+    <min>-180</min>
+    <max>180</max>
+    <wrap>true</wrap>
+   </binding>
+  </action>
+ </animation> -->
+
+ <!-- lighting -->
+ <animation>
+  <object-name>INSTR_mount</object-name>
+  <object-name>INSTR_mount50</object-name>
+  <object-name>INSTR_mode-knob</object-name>
+  <object-name>INSTR_hdg-knob</object-name>
+  <condition>
+            <not>
+            <property>/sim/rendering/shaders/skydome</property>
+          </not>
+          </condition>
+  <type>material</type>
+  <emission>
+   <factor-prop>controls/lighting/lighting-panel/flood-inst-pnl</factor-prop>
+   <red>0.45</red>
+   <green>0.34</green>
+   <blue>0.18</blue>
+  </emission>
+ </animation>
+
+</PropertyList>

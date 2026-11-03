@@ -1,0 +1,135 @@
+<?xml version="1.0"?>
+
+<PropertyList>
+
+ <path>eyebrow_left.ac</path>
+
+ <effect>
+        <inherits-from>Aircraft/f16/Models/Effects/model-interior/panel-standard</inherits-from>
+        <parameters>
+            <implicit-lightmap-threshold-low type="float">0.4</implicit-lightmap-threshold-low>
+            <implicit-lightmap-threshold-high type="float">1.1</implicit-lightmap-threshold-high>
+        </parameters>
+        <!-- objects added to this will have all white in texture lit up green when console is high. They will also get flood light -->
+        <object-name>iff</object-name>
+        <object-name>f-ack</object-name>
+        <object-name>box.003</object-name>
+    </effect>
+
+ <animation>
+  <type>select</type>
+  <object-name>unused1</object-name>
+  <object-name>unused2</object-name>
+  <object-name>none</object-name>
+  <object-name>tf_fail</object-name>
+  <condition>
+    <or>
+    <property type="bool">/tmp/nill</property>
+    <property>controls/test/test-panel/mal-ind-lts</property>
+    </or>
+  </condition>
+ </animation>
+
+ <animation>
+  <type>select</type>
+  <object-name>master_caution</object-name>
+  <condition>
+    <or>
+        <property>f16/avionics/caution/master</property>
+        <property>controls/test/test-panel/mal-ind-lts</property>
+    </or>
+  </condition>
+ </animation>
+
+ <animation>
+  <object-name>iff</object-name>
+  <type>material</type>
+  <condition>
+
+      <or>
+          <and>
+            <greater-than><property>fdm/jsbsim/elec/bus/batt-1</property><value>20</value></greater-than><!-- check elec here, this bus was a guess -->
+            <property>instrumentation/radar/iff</property>
+          </and>
+          <property>controls/test/test-panel/mal-ind-lts</property>
+      </or>
+
+  </condition>
+  <emission>
+   <red>1</red>
+   <green>1</green>
+   <blue>1</blue>
+  </emission>
+ </animation>
+
+ <animation>
+    <type>pick</type>
+    <visible>true</visible>
+    <object-name>iff</object-name>
+    <action>
+     <button>0</button>
+     <repeatable>false</repeatable>
+     <binding>
+      <command>property-assign</command>
+      <property>instrumentation/radar/iff</property>
+      <value>1</value>
+     </binding>
+    </action>
+   </animation>
+
+   <animation>
+    <type>pick</type>
+    <visible>true</visible>
+    <object-name>master_reset</object-name>
+    <action>
+     <button>0</button>
+     <repeatable>false</repeatable>
+     <binding>
+      <command>nasal</command>
+      <script>fail.master_caution();</script>
+     </binding>
+     <binding>
+        <command>property-assign</command>
+        <property>f16/avionics/caution/master-btn</property>
+        <value>1</value>
+      </binding>
+      <mod-up>
+        <binding>
+          <command>property-assign</command>
+          <property>f16/avionics/caution/master-btn</property>
+          <value>0</value>
+        </binding>
+      </mod-up>
+    </action>
+   </animation>
+
+   <animation>
+    <type>pick</type>
+    <visible>true</visible>
+    <object-name>f-ack</object-name>
+    <action>
+     <button>0</button>
+     <repeatable>false</repeatable>
+     <binding>
+      <command>nasal</command>
+      <script>fail.f_ack();</script>
+     </binding>
+    </action>
+   </animation>
+
+ <animation>
+  <type>material</type>
+  <object-name>unused1</object-name>
+  <object-name>unused2</object-name>
+  <object-name>none</object-name>
+  <object-name>tf_fail</object-name>
+  <object-name>master_caution</object-name>
+  <emission>
+   <red>1</red>
+   <green>1</green>
+   <blue>1</blue>
+   <factor-prop>controls/lighting/lighting-panel/mal-ind-lts-brightness</factor-prop>
+  </emission>
+ </animation>
+
+</PropertyList>

@@ -10,6 +10,17 @@ any later version** (see `LICENSE` and `copyright.txt`).
   (from `Models/Effects/glass/`), `nozzle-GE.ac`, `nozzle-GE.png`, `AIM-9L_LW.ac`, `AIM-9L_RW.ac`, `AIM-9L.png`.
 - `animations.json` is derived from `Models/F-16.xml`: the gear, control-surface and speedbrake
   animations, converted to JSON.
+- **3D cockpit:** `Models/Cockpit/**` (the cockpit model, seat, stick, throttle, rudder pedals, side and
+  auxiliary consoles, ICP, instruments, MFD bezels and their textures) and `Models/Pilots/Tex_0004_1.jpg`,
+  copied unmodified with FlightGear's folder layout. Three textures (`navFreq.png`, `temp.zKnob.png`,
+  `tranbg.png`) also appear in `Models/Cockpit/Textures/`: these are unchanged copies of the files in
+  `Models/Cockpit/Main/`, put where FlightGear's texture search would find them.
+  Not included: FlightGear's HUD symbology, kneeboards, the Block 10 stick, the Canvas-driven
+  DED/PFD/CDU/RWR/threat displays, and the generic altimeter, which is part of FlightGear's base package.
 - Changes made by this project: the models are read by `js/acloader.js` and animated by `js/model-f16.js`,
   which re-implement the subset of FlightGear's model animations listed above and map them to this
-  simulator's flight state. Cockpit, effects and other parts of the original aircraft are not included.
+  simulator's flight state. The cockpit is read by `js/fgmodel.js` (a loader for FlightGear model XML,
+  sub-models, offsets, conditions and rotate/translate/select/textranslate/spin animations) and
+  `js/cockpit-fg.js`, which maps this simulator's state onto the FlightGear properties the instruments
+  read and draws this project's own pages on the two MFD screens. Effects, sounds, Nasal scripts and
+  the flight model of the original aircraft are not included.

@@ -1,0 +1,676 @@
+<?xml version="1.0"?>
+<PropertyList>
+    <path>misc.ac</path>
+    <!--
+
+
+controls/lighting/lighting-panel/flood-inst-pnl Flood lighting
+
+controls/armament/alt-rel-button         Alternative release (pickle) button
+
+f16/fcs/autopilot-on                     Autopilot engage (block 15 and earlier)
+
+controls/armament/laser-arm-dmd          FLIR targeting laser
+
+controls/armament/master-arm             master arm
+      when controls/armament/master-arm-cover-open GreaterThan 0
+      when sim/variant-id GreaterThan 5
+
+f16/fcs/switch-roll-block15              autopilot roll control (block 15 or before)
+      when sim/variant-id LessThan 2
+
+f16/fcs/switch-pitch-block15             autopilot pitch control (block 15 or before)
+      when sim/variant-id LessThan 2
+
+controls/armament/master-arm-cover-open  guard for master arm (pre block 52)
+      when controls/armament/master-arm Equals 0
+
+controls/armament/rf-mode                RF mode, normal, quiet, silent
+
+f16/fcs/switch-pitch-block20             -1 ATT HOLD=Autopilot hold attitude, 0 AP OFF=Autopilot off, 1 ALT HOLD=Autopilot hold altitude (block 20 or later)
+      when sim/variant-id GreaterThanEquals 2
+
+f16/fcs/switch-roll-block20              -1 STRG SEL=waypoint, 0 hold roll and altitude, 0 ATT HOLD=Autopilot hold roll and altitude, 1 HDG SEL=HSI heading, (block 20 or later)
+      when sim/variant-id GreaterThanEquals 2
+
+f16/fcs/adv-mode-sel                     autopilot adv mode (post block 15)
+
+light: TFS (Terrain Following System) active
+      when f16/fcs/adv-mode Equals 0
+
+light: TFS (Terrain Following System) standby
+      when f16/fcs/adv-mode GreaterThan 0
+
+light: ecm lamp on
+      when controls/armament/ecm-enabled Equals 0
+
+light: ecm lamp off
+      when controls/armament/ecm-enabled GreaterThan 0
+    -->
+    <animation>
+        <type>noshadow</type>
+        <object-name>pitch-hold-switch-axis</object-name>
+        <object-name>master-arm-switch-axis</object-name>
+        <object-name>quiet-switch-axis</object-name>
+        <object-name>block-15</object-name>
+        <object-name>roll-switch-b15</object-name>
+        <object-name>roll-switch-b15-axis</object-name>
+        <object-name>pitch-switch-b15-axis</object-name>
+        <object-name>pitch-switch-b15</object-name>
+        <object-name>MISC_1_block-15</object-name>
+        <object-name>autopilot-switch-axis</object-name>
+        <object-name>autopilot-switch-base</object-name>
+        <object-name>block-50</object-name>
+        <object-name>active-off</object-name>
+        <object-name>roll-hold-switch</object-name>
+        <object-name>pitch-hold-switch</object-name>
+        <object-name>active-on</object-name>
+        <object-name>MISC_1_block-50</object-name>
+        <object-name>adv-mode-button</object-name>
+        <object-name>stby-on</object-name>
+        <object-name>stby-off</object-name>
+        <object-name>switches</object-name>
+        <object-name>quiet-switch</object-name>
+        <object-name>ecm-enbl-off</object-name>
+        <object-name>ecm-enbl-on</object-name>
+        <object-name>ecm-enbl</object-name>
+        <object-name>laser-arm-switch-axis</object-name>
+        <object-name>roll-hold-switch-axis</object-name>
+        <object-name>switch-bases</object-name>
+        <object-name>alt-rel-button</object-name>
+        <object-name>laser-arm-switch</object-name>
+        <object-name>master-arm-cover</object-name>
+        <object-name>autopilot-switch</object-name>
+        <object-name>master-arm-cover-axis</object-name>
+        <object-name>master-arm-switch</object-name>
+  </animation>
+
+    <effect>
+        <name>models-effects-model-interior/panel-standard</name>
+        <inherits-from>Aircraft/f16/Models/Effects/model-interior/panel-standard</inherits-from>
+        <parameters>
+            <implicit-lightmap-threshold-low type="float">0.25</implicit-lightmap-threshold-low>
+        <implicit-lightmap-threshold-high type="float">0.5</implicit-lightmap-threshold-high>
+        </parameters>
+        <!-- objects added to this will have all white in texture lit up green when console is high. They will also get flood light. -->
+        <object-name>MISC_1_block-50</object-name>
+        <object-name>MISC_1_block-15</object-name>
+        <object-name>ecm-enbl</object-name>
+    </effect>
+
+    <effect>
+        <inherits-from>Aircraft/f16/Models/Effects/model-interior/panel-standard</inherits-from>
+        <parameters>
+            <implicit-lightmap-enabled type="int">0</implicit-lightmap-enabled>
+        </parameters>
+        <!-- objects added to this will NOT have all white in texture lit up green when console is high. They will get flood light though. -->
+        <!-- mainly for switches -->
+        <object-name>switches</object-name>
+        <object-name>adv-mode-button</object-name>
+        <object-name>pitch-hold-switch</object-name>
+        <object-name>roll-hold-switch</object-name>
+        <object-name>pitch-switch-b15</object-name>
+        <object-name>roll-switch-b15</object-name>
+        <object-name>autopilot-switch-base</object-name>
+    </effect>
+
+
+
+    <animation>
+        <type>pick</type>
+        <visible>true</visible>
+        <object-name>alt-rel-button</object-name>
+        <action>
+            <button>0</button>
+            <binding>
+                <command>property-assign</command>
+                <property>controls/armament/alt-rel-button</property>
+                <value>1</value>
+            </binding>
+            <mod-up>
+                <binding>
+                    <command>property-assign</command>
+                    <property>controls/armament/alt-rel-button</property>
+                    <value>0</value>
+                </binding>
+            </mod-up>
+        </action>
+    </animation>
+    <animation>
+        <type>translate</type>
+        <object-name>alt-rel-button</object-name>
+        <factor>-0.005</factor>
+        <property>controls/armament/alt-rel-button</property>
+        <axis>
+            <x>0</x>
+            <y>0</y>
+            <z>1</z>
+        </axis>
+    </animation>
+
+    <animation>
+        <type>knob</type>
+        <object-name>autopilot-switch</object-name>
+        <property>f16/fcs/autopilot-on</property>
+        <factor>45</factor>
+        <drag-direction>vertical</drag-direction>
+        <axis>
+            <object-name>autopilot-switch-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>f16/fcs/autopilot-on</property>
+                <factor>1</factor>
+                <min>0</min>
+                <max>1</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+        <release>
+            <binding>
+                <command>nasal</command>
+                <script>autoflight.autopilot_inhibit.inhibit_check();</script>
+            </binding>
+        </release>
+    </animation>
+
+    <animation>
+        <type>knob</type>
+        <object-name>laser-arm-switch</object-name>
+        <property>controls/armament/laser-arm-dmd</property>
+        <factor>60</factor>
+        <drag-direction>vertical</drag-direction>
+        <axis>
+            <object-name>laser-arm-switch-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>controls/armament/laser-arm-dmd</property>
+                <factor>1</factor>
+                <min>0</min>
+                <max>1</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+    </animation>
+
+    <animation>
+        <type>knob</type>
+        <object-name>master-arm-switch</object-name>
+        <condition>
+            <or>
+                <greater-than>
+                    <property>controls/armament/master-arm-cover-open</property>
+                    <value>0</value>
+                </greater-than>
+                <equals>
+                	<property>sim/variant-id</property>
+                	<value>2</value>
+            	</equals>
+            	<equals>
+                	<property>sim/variant-id</property>
+                	<value>4</value>
+            	</equals>
+            	<equals>
+                	<property>sim/variant-id</property>
+                	<value>5</value>
+            	</equals>
+            	<equals>
+                	<property>sim/variant-id</property>
+                	<value>6</value>
+            	</equals>
+                <equals>
+                    <property>sim/variant-id</property>
+                    <value>7</value>
+                </equals>
+            </or>
+        </condition>
+        <property>controls/armament/master-arm-switch</property>
+        <factor>45</factor>
+        <drag-direction>vertical</drag-direction>
+        <axis>
+            <object-name>master-arm-switch-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>controls/armament/master-arm-switch</property>
+                <factor>1</factor>
+                <min>-1</min>
+                <max>1</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+    </animation>
+
+    <animation>
+        <type>knob</type>
+        <object-name>pitch-switch-b15</object-name>
+        <condition>
+            <less-than>
+                <property>sim/variant-id</property>
+                <value>4</value>
+            </less-than>
+        </condition>
+        <property>f16/fcs/switch-pitch-block15</property>
+        <offset-deg>-30</offset-deg>
+        <factor>60</factor>
+        <drag-direction>vertical</drag-direction>
+        <axis>
+            <object-name>pitch-switch-b15-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>f16/fcs/switch-pitch-block15</property>
+                <factor>1</factor>
+                <min>0</min>
+                <max>1</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+    </animation>
+    <animation>
+        <type>knob</type>
+        <object-name>roll-switch-b15</object-name>
+        <condition>
+            <less-than>
+                <property>sim/variant-id</property>
+                <value>4</value>
+            </less-than>
+        </condition>
+        <property>f16/fcs/switch-roll-block15</property>
+        <offset-deg>-30</offset-deg>
+        <factor>60</factor>
+        <drag-direction>vertical</drag-direction>
+        <axis>
+            <object-name>roll-switch-b15-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>f16/fcs/switch-roll-block15</property>
+                <factor>1</factor>
+                <min>0</min>
+                <max>1</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+    </animation>
+
+    <animation>
+        <type>knob</type>
+        <object-name>master-arm-cover</object-name>
+        <condition>
+            <equals>
+                <property>controls/armament/master-arm-switch</property>
+                <value>0</value>
+            </equals>
+        </condition>
+        <property>controls/armament/master-arm-cover-open</property>
+        <factor>-90</factor>
+        <drag-direction>horizontal</drag-direction>
+        <axis>
+            <object-name>master-arm-cover-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>controls/armament/master-arm-cover-open</property>
+                <factor>-1</factor>
+                <min>0</min>
+                <max>1</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+    </animation>
+
+    <animation>
+        <type>knob</type>
+        <object-name>quiet-switch</object-name>
+        <property>f16/avionics/rf/rf-switch</property>
+        <offset-deg>40</offset-deg>
+        <factor>-40</factor>
+        <drag-direction>vertical</drag-direction>
+        <axis>
+            <object-name>quiet-switch-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>f16/avionics/rf/rf-switch</property>
+                <factor>-1</factor>
+                <min>0</min>
+                <max>2</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+    </animation>
+
+    <animation>
+        <type>knob</type>
+        <object-name>roll-hold-switch</object-name>
+        <condition>
+            <greater-than-equals>
+                <property>sim/variant-id</property>
+                <value>4</value>
+            </greater-than-equals>
+        </condition>
+        <property>f16/fcs/switch-pitch-block20</property>
+        <factor>45</factor>
+        <drag-direction>vertical</drag-direction>
+        <axis>
+            <object-name>roll-hold-switch-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>f16/fcs/switch-pitch-block20</property>
+                <factor>1</factor>
+                <min>-1</min>
+                <max>1</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+        <release>
+            <binding>
+                <command>nasal</command>
+                <script>autoflight.autopilot_inhibit.inhibit_check();</script>
+            </binding>
+        </release>
+    </animation>
+
+    <animation>
+        <type>knob</type>
+        <object-name>pitch-hold-switch</object-name>
+        <condition>
+            <greater-than-equals>
+                <property>sim/variant-id</property>
+                <value>4</value>
+            </greater-than-equals>
+        </condition>
+        <property>f16/fcs/switch-roll-block20</property>
+        <factor>45</factor>
+        <drag-direction>vertical</drag-direction>
+        <axis>
+            <object-name>pitch-hold-switch-axis</object-name>
+        </axis>
+        <action>
+            <binding>
+                <command>property-adjust</command>
+                <property>f16/fcs/switch-roll-block20</property>
+                <factor>1</factor>
+                <min>-1</min>
+                <max>1</max>
+                <wrap>false</wrap>
+            </binding>
+        </action>
+    </animation>
+    <animation>
+        <type>pick</type>
+        <visible>true</visible>
+        <object-name>stby-off</object-name>
+        <object-name>stby-on</object-name>
+        <object-name>active-on</object-name>
+        <object-name>active-off</object-name>
+        <object-name>adv-mode-button</object-name>
+        <action>
+            <button>0</button>
+            <repeatable>false</repeatable>
+            <binding>
+                <command>property-toggle</command>
+                <property>f16/fcs/adv-mode-sel</property>
+            </binding>
+        </action>
+    </animation>
+    <animation>
+        <type>translate</type>
+        <object-name>stby-off</object-name>
+        <object-name>stby-on</object-name>
+        <object-name>active-on</object-name>
+        <object-name>active-off</object-name>
+        <object-name>adv-mode-button</object-name>
+        <property>f16/fcs/adv-mode-sel</property>
+        <factor>-0.0035</factor>
+        <axis>
+            <z>1</z>
+        </axis>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>active-off</object-name>
+        <condition>
+            <not>
+                <or>
+                    <property>controls/test/test-panel/mal-ind-lts</property>
+                    <greater-than>
+                        <property>f16/fcs/adv-mode</property>
+                        <value>0</value>
+                    </greater-than>
+                </or>
+            </not>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>active-on</object-name>
+        <condition>
+            <or>
+                <property>controls/test/test-panel/mal-ind-lts</property>
+                <greater-than>
+                    <property>f16/fcs/adv-mode</property>
+                    <value>0</value>
+                </greater-than>
+            </or>
+        </condition>
+    </animation>
+    <animation>
+        <object-name>active-on</object-name>
+        <object-name>stby-on</object-name>
+        <type>material</type>
+        <emission>
+            <red>1</red>
+            <green>1</green>
+            <blue>1</blue>
+        </emission>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>autopilot-switch</object-name>
+        <condition>
+            <less-than>
+                <property>sim/variant-id</property>
+                <value>4</value>
+            </less-than>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>block-15</object-name>
+        <condition>
+            <less-than>
+                <property>sim/variant-id</property>
+                <value>4</value>
+            </less-than>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>block-50</object-name>
+        <condition>
+            <greater-than-equals>
+                <property>sim/variant-id</property>
+                <value>4</value>
+            </greater-than-equals>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>ecm-enbl-off</object-name>
+        <condition>
+            <not>
+                <or>
+                    <property>controls/test/test-panel/mal-ind-lts</property>
+                    <greater-than>
+                        <property>controls/armament/ecm-enabled</property>
+                        <value>0</value>
+                    </greater-than>
+                </or>
+            </not>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>ecm-enbl-on</object-name>
+        <condition>
+            <or>
+                <property>controls/test/test-panel/mal-ind-lts</property>
+                <greater-than>
+                    <property>controls/armament/ecm-enabled</property>
+                    <value>0</value>
+                </greater-than>
+            </or>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>ecm-enbl</object-name>
+        <object-name>ecm-enbl-off</object-name>
+        <object-name>ecm-enbl-on</object-name>
+        <condition>
+            <greater-than>
+                <property>sim/variant-id</property>
+                <value>3</value>
+            </greater-than>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>master-arm-cover</object-name>
+        <condition>
+           <or>
+            <equals>
+                <property>sim/variant-id</property>
+                <value>0</value>
+            </equals>
+            <equals>
+                <property>sim/variant-id</property>
+                <value>1</value>
+            </equals>
+            <equals>
+                <property>sim/variant-id</property>
+                <value>3</value>
+            </equals>
+          </or>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>pitch-hold-switch</object-name>
+        <condition>
+            <greater-than-equals>
+                <property>sim/variant-id</property>
+                <value>3</value>
+            </greater-than-equals>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>pitch-switch-b15</object-name>
+        <condition>
+            <less-than-equals>
+                <property>sim/variant-id</property>
+                <value>3</value>
+            </less-than-equals>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>roll-hold-switch</object-name>
+        <condition>
+            <greater-than>
+                <property>sim/variant-id</property>
+                <value>3</value>
+            </greater-than>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>roll-switch-b15</object-name>
+        <condition>
+            <less-than-equals>
+                <property>sim/variant-id</property>
+                <value>3</value>
+            </less-than-equals>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>stby-off</object-name>
+        <condition>
+            <not>
+                <or>
+                    <property>controls/test/test-panel/mal-ind-lts</property>
+                    <greater-than>
+                        <property>f16/fcs/stby-mode</property>
+                        <value>0</value>
+                    </greater-than>
+                </or>
+            </not>
+        </condition>
+    </animation>
+    <animation>
+        <type>select</type>
+        <object-name>stby-on</object-name>
+        <condition>
+            <or>
+                <property>controls/test/test-panel/mal-ind-lts</property>
+                <greater-than>
+                    <property>f16/fcs/stby-mode</property>
+                    <value>0</value>
+                </greater-than>
+            </or>
+        </condition>
+    </animation>
+
+    <animation>
+        <type>material</type>
+        <object-name>ecm-enbl-on</object-name>
+        <emission>
+            <red>1</red>
+            <green>1</green>
+            <blue>1</blue>
+            <factor-prop>controls/lighting/lighting-panel/mal-ind-lts-brightness</factor-prop>
+        </emission>
+    </animation>
+
+    <!-- Non-ALS flood light. Must be at end of file: -->
+ <animation>
+        <type>material</type>
+        <object-name>MISC_1_block-50</object-name>
+        <object-name>MISC_1_block-15</object-name>
+        <object-name>ecm-enbl</object-name>
+        <object-name>switches</object-name>
+        <object-name>adv-mode-button</object-name>
+        <object-name>pitch-hold-switch</object-name>
+        <object-name>roll-hold-switch</object-name>
+        <object-name>pitch-switch-b15</object-name>
+        <object-name>roll-switch-b15</object-name>
+        <object-name>autopilot-switch-base</object-name>
+        <condition>
+            <not>
+            <property>/sim/rendering/shaders/skydome</property>
+          </not>
+          </condition>
+        <emission>
+            <factor-prop>controls/lighting/lighting-panel/flood-inst-pnl</factor-prop>
+            <red>0.45</red>
+            <green>0.34</green>
+            <blue>0.18</blue>
+        </emission>
+    </animation>
+
+</PropertyList>
+

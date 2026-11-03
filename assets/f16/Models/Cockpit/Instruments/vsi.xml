@@ -1,0 +1,75 @@
+<?xml version="1.0"?>
+<PropertyList>
+
+ <path>vsi.ac</path>
+
+ <animation>
+  <type>select</type>
+  <object-name>VSI_off-flag-inverted</object-name>
+  <condition>
+   <not><or>
+		<not>
+			<property>systems/static/serviceable</property>
+		</not>
+		<less-than-equals>
+			<property>fdm/jsbsim/elec/bus/emergency-ac-1</property>
+			<value>100</value>
+		</less-than-equals>
+	</or></not>
+  </condition>
+ </animation>
+
+ <animation>
+  <name>needle</name>
+  <type>rotate</type>
+  <object-name>VSI_needle</object-name>
+  <property>f16/avionics/vvi-indicated-speed-fps</property>
+  <interpolation>
+   <entry><ind>-100.0</ind><dep>-90</dep></entry>
+   <entry><ind>-66.667</ind><dep>-74</dep></entry>
+   <entry><ind>-33.333</ind><dep>-56.4</dep></entry>
+   <entry><ind>-16.667</ind><dep>-44</dep></entry>
+   <entry><ind>-8.333</ind><dep>-21.8</dep></entry>
+   <entry><ind>0.0</ind><dep>0</dep></entry>
+   <entry><ind>8.333</ind><dep>21.8</dep></entry>
+   <entry><ind>16.667</ind><dep>44</dep></entry>
+   <entry><ind>33.333</ind><dep>56.4</dep></entry>
+   <entry><ind>66.667</ind><dep>74</dep></entry>
+   <entry><ind>100.0</ind><dep>90</dep></entry>
+  </interpolation>
+  <center>
+   <x-m>0</x-m>
+   <y-m>0.0110</y-m>
+   <z-m>0</z-m>
+  </center>
+  <axis>
+   <x>-1</x>
+   <y>0</y>
+   <z>0</z>
+  </axis>
+ </animation>
+
+ <!-- lighting -->
+  <effect>
+        <inherits-from>Aircraft/f16/Models/Effects/model-interior/panel-standard</inherits-from>
+        <parameters>
+            <implicit-lightmap-enabled type="int">0</implicit-lightmap-enabled>
+        </parameters>
+        <object-name>VSI_mount</object-name>     
+  
+ </effect>
+
+ <animation>
+  <object-name>VSI_off-flag-inverted</object-name>
+  <object-name>VSI_face</object-name>
+  <object-name>VSI_needle</object-name>
+  <type>material</type>
+  <emission> 
+   <factor-prop>controls/lighting/lighting-panel/pri-inst-pnl</factor-prop>
+   <red>0.6</red>
+   <green>0.4</green>
+   <blue>0.3</blue>
+  </emission>
+ </animation>
+
+</PropertyList>
