@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { createNoise, smoothstep, lerp, clamp } from './noise.js';
+import { createDetailPatch } from './terrain-detail.js';
 
 export const WORLD_SIZE = 24000;          // metres, square
 const CELLS = 384;                        // grid cells per side (62.5 m)
@@ -81,8 +82,8 @@ for (let i = 0; i < VERTS; i++) {
   for (let j = 0; j < VERTS; j++) heights[i * VERTS + j] = rawHeight(-HALF + j * CELL, -HALF + i * CELL);
 }
 
-// Height of the terrain surface (may be below sea level).
-export function terrainHeight(x, z) {
+// Coarse terrain: the 62.5 m grid with the same triangulation as the coarse mesh.
+export function coarseHeight(x, z) {
   const gx = (x + HALF) / CELL;
   const gz = (z + HALF) / CELL;
   if (gx < 0 || gz < 0 || gx >= CELLS || gz >= CELLS) return -156;
@@ -94,6 +95,55 @@ export function terrainHeight(x, z) {
   const hd = heights[(i + 1) * VERTS + j + 1];
   if (fx + fz <= 1) return ha + (hb - ha) * fx + (hc - ha) * fz;
   return hd + (hc - hd) * (1 - fx) + (hb - hd) * (1 - fz);
+}
+
+// ---------- Fine terrain detail ----------
+// Metre-scale relief added on top of the coarse grid: rocky ridges on steep mountain slopes,
+// gentle undulation on open land, nothing at the airfields or on the beaches. The exact same
+// function runs on the GPU for the detailed terrain patch around the aircraft (js/terrain-detail.js),
+// so what you see near the aircraft is what you collide with.
+export const DETAIL = { scales: [70, 23, 8], weights: [1.0, 0.45, 0.15], seeds: [11, 23, 37], fieldFade: 600 };
+
+export function hash2i(ix, iz, seed) {
+  let h = (Math.imul(ix, 0x27d4eb2d) ^ Math.imul(iz, 0x165667b1) ^ seed) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function vnoise(x, z, seed) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = x - ix, fz = z - iz;
+  const u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
+  const a = hash2i(ix, iz, seed), b = hash2i(ix + 1, iz, seed), c = hash2i(ix, iz + 1, seed), d = hash2i(ix + 1, iz + 1, seed);
+  return a + (b - a) * u + (c - a) * w + (a - b - c + d) * u * w;
+}
+export function detailNoise(x, z) {
+  let n = 0;
+  for (let k = 0; k < 3; k++) n += (vnoise(x / DETAIL.scales[k], z / DETAIL.scales[k], DETAIL.seeds[k]) - 0.5) * DETAIL.weights[k];
+  return n;
+}
+// Amplitude (metres) of the detail at a point, from the coarse height, slope and airfield distance.
+export function detailAmp(x, z) {
+  const hc = coarseHeight(x, z);
+  let w = smoothstep(2, 15, hc);
+  if (w <= 0) return 0;
+  for (const f of AIRFIELDS) {
+    const { along, across } = fieldLocal(f, x, z);
+    const da = Math.max(0, Math.abs(along) - f.length / 2 - 120);
+    const dc = Math.max(0, Math.abs(across) - f.margin);
+    w *= smoothstep(0, DETAIL.fieldFade, Math.hypot(da, dc));
+  }
+  if (w <= 0) return 0;
+  const sx = (coarseHeight(x + 30, z) - coarseHeight(x - 30, z)) / 60;
+  const sz = (coarseHeight(x, z + 30) - coarseHeight(x, z - 30)) / 60;
+  const slope = Math.hypot(sx, sz);
+  return w * (0.7 + 9 * smoothstep(0.12, 0.5, slope) * smoothstep(60, 300, hc));
+}
+
+// Height of the terrain surface (may be below sea level), including the fine detail.
+export function terrainHeight(x, z) {
+  const amp = detailAmp(x, z);
+  return coarseHeight(x, z) + (amp > 0 ? amp * detailNoise(x, z) : 0);
 }
 
 // ---------- Terrain sun shadows ----------
@@ -119,7 +169,7 @@ export function bakeTerrainShadows(sunDir) {
       const h0 = Math.max(heights[i * VERTS + j], SEA_LEVEL) + 2;
       let maxTan = -1;
       for (let d = CELL * 0.7; d < 14000; d *= 1.07) {
-        const h = terrainHeight(x + dx * d, z + dz * d);
+        const h = coarseHeight(x + dx * d, z + dz * d);
         const tn = (h - h0) / d;
         if (tn > maxTan) maxTan = tn;
         // Nothing further can rise above the sun line once we're well above the highest peaks.
@@ -344,13 +394,16 @@ function buildTerrainMesh() {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
 
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 4 });
   // Break up the flat vertex colours with multi-scale detail noise.
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.detailMap = { value: detailTex };
+    // The detailed patch around the aircraft replaces the coarse mesh inside its square.
+    sh.uniforms.uPatch = mat.userData.patch ?? { value: new THREE.Vector3(0, 0, -1) };
     sh.vertexShader = 'varying vec3 vWPos;\n' + sh.vertexShader.replace('#include <begin_vertex>',
       '#include <begin_vertex>\n  vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = 'uniform sampler2D detailMap;\nvarying vec3 vWPos;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    sh.fragmentShader = 'uniform sampler2D detailMap;\nuniform vec3 uPatch;\nvarying vec3 vWPos;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      if (abs(vWPos.x - uPatch.x) < uPatch.z && abs(vWPos.z - uPatch.y) < uPatch.z) discard;
       float camDist = length(vWPos - cameraPosition);
       vec3 d1 = texture2D(detailMap, vWPos.xz / 11.0).rgb;
       vec3 d2 = texture2D(detailMap, vWPos.xz / 97.0).rgb;
@@ -945,7 +998,12 @@ function buildTrees(maxTrees) {
 }
 
 export function buildWorld(scene, renderer, env, quality = 'high') {
-  scene.add(buildTerrainMesh());
+  const coarseMesh = buildTerrainMesh();
+  scene.add(coarseMesh);
+  const detail = createDetailPatch({ heights, VERTS, CELLS, CELL, HALF, colors: coarseMesh.geometry.attributes.color.array,
+    detailTex, applyTerrainShadow, fields: AIRFIELDS, DETAIL, cells: quality === 'low' ? 120 : 200 });
+  scene.add(detail.mesh);
+  coarseMesh.material.userData.patch = detail.patchUniform;
   const sea = buildSea(env);
   scene.add(sea.mesh);
   const lights = [], papis = [], windsocks = [], nightLights = [];
@@ -974,6 +1032,7 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
     // lightsOn: night or poor visibility (airports switch their lights on in cloud, rain and fog).
     update(t, camera, wind, lightsOn = env.night) {
       sea.update(t);
+      detail.update(camera);
       nightPoints.visible = env.night;
       airportLights.update(t, camera, lightsOn, env.night);
       for (const fl of floods) fl.visible = env.night;

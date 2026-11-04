@@ -237,6 +237,13 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 - **Mountain shadows:** the terrain casts sun shadows across the island. They're computed for the sun's
   position at each time of day, so they're long at sunrise and sunset and short at noon, and they fall on
   trees and houses too.
+- **Detailed terrain near the aircraft:** a 2.4 km patch with 12 m spacing follows you around. Its
+  heights are computed on the graphics card from the coarse terrain plus fine detail: rocky ridges of up to
+  about 7 m on steep mountain slopes, gentle undulation of under a metre on open land, and nothing at the
+  airfields or on beaches. The same detail function is used for collisions, the landing gear, trees and
+  houses, so the ground you see is the ground you touch. The GPU copy of the function matches the
+  JavaScript one bit for bit (same integer hash), and the detail fades out at the patch edge to meet the
+  coarse mesh.
 - **Terrain relief:** fine bumps in the lighting at two scales, so slopes have texture rather than looking
   like smooth facets.
 - **Aerial perspective:** haze is densest low down and thins with height (about a 1.8 km scale height).
@@ -293,6 +300,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/post.js` | HDR rendering with bloom, tone mapping and vignette. |
 | `js/flare.js` | Sun lens flare with terrain and cloud occlusion. |
 | `js/trails.js` | High-altitude contrails. |
+| `js/terrain-detail.js` | The detailed terrain patch around the camera, with its heights computed on the GPU. |
 | `js/rain.js` | Falling rain streaks around the camera. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |
 | `js/autopilot.js` | Heading and altitude hold with coordinated turns and stall protection. |
