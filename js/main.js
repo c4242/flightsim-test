@@ -256,7 +256,7 @@ fillSelect('setTime', TIMES_OF_DAY, settings.timeOfDay).addEventListener('change
   settings.timeOfDay = e.target.value; saveSettings(settings);
   if (!missions.mission?.time) applyTime(settings.timeOfDay);
 });
-const CLOUD_LABELS = { clear: 'Clear', scattered: 'Scattered', overcast: 'Overcast (1,500 ft)', rain: 'Rain (overcast, 1,100 ft)', fog: 'Fog' };
+const CLOUD_LABELS = { clear: 'Clear', scattered: 'Scattered', overcast: 'Overcast (1,500 ft)', rain: 'Rain (overcast, 1,100 ft)', fog: 'Fog', variable: 'Changing (showers come and go)' };
 fillSelect('setClouds', Object.keys(CLOUD_LABELS), settings.clouds, (v) => CLOUD_LABELS[v]).addEventListener('change', (e) => {
   settings.clouds = e.target.value; saveSettings(settings);
   if (!missions.mission?.clouds) sky.setClouds(settings.clouds);
@@ -609,14 +609,20 @@ function updateHeatShimmer(dt) {
 
 // ---------- Rain ----------
 // Heaviest below the cloud base, lighter inside the cloud, none above it.
-let glassMist = 0; // droplets collected flying through cloud; they blow off over a few seconds
+let glassMist = 0, showerOn = false; // droplets collected flying through cloud; they blow off over a few seconds
 function updateRain(dt) {
   const mist = sky.inCloud * 0.4;
   glassMist = mist > glassMist ? glassMist + (mist - glassMist) * Math.min(1, dt * 3) : glassMist * Math.exp(-dt / 4);
-  const raining = sky.raining;
-  weather.rain = raining;
+  weather.rain = sky.raining;
+  weather.shower = sky.rain;
   const h = camera.position.y;
-  const amount = raining ? (h < 340 ? 1 : h < 2100 ? 0.5 : 0) : 0;
+  const layer = sky.cloudLayer;
+  const amount = sky.rain > 0.01 && layer ? sky.rain * (h < layer[0] ? 1 : h < layer[1] ? 0.5 : 0) : 0;
+  // Announce showers arriving and passing when the weather is changing.
+  if (sky.cloudMode === 'variable' && !replaying) {
+    if (!showerOn && sky.rain > 0.3) { showerOn = true; hud.message('Rain shower moving in', '#9cf', 3); }
+    if (showerOn && sky.rain < 0.1) { showerOn = false; hud.message('The rain is clearing', '#9cf', 3); }
+  }
   const ground = Math.max(0, terrainHeight(camera.position.x, camera.position.z));
   const light = sky.env.night ? 0.25 : 1;
   rain.update(dt, camera, subject.vel ?? aircraft.vel, weather.surfaceWind, amount, ground, light);
@@ -712,8 +718,8 @@ function frame(now) {
   model.object.quaternion.copy(subject.quat);
   model.update(subject, paused && !replaying ? 0 : dt);
   updateCamera(paused && !replaying ? 0 : dt);
-  sky.update(camera, subject.pos, dt);
-  world.update(clock, camera, weather.surfaceWind, sky.env.night || sky.haze > 0.3 || sky.cloudMode === "low" || sky.cloudMode === "rain");
+  sky.update(camera, subject.pos, paused && !replaying ? 0 : dt);
+  world.update(clock, camera, weather.surfaceWind, sky.env.night || sky.haze > 0.3 || sky.weatherState.deck > 0.6);
   if (cameraMode === 'cockpit' && !replaying) {
     panelTimer -= dt;
     if (panelTimer <= 0) {

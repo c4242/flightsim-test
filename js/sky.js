@@ -133,12 +133,35 @@ export function createSky(scene, renderer) {
 
   // ---------- Overcast cloud deck and fog ----------
   const deckTex = deckTexture();
-  const deckMat = (c) => new THREE.MeshBasicMaterial({ map: deckTex, color: c, side: THREE.DoubleSide, fog: true });
+  const deckMat = (c) => new THREE.MeshBasicMaterial({ map: deckTex, color: c, side: THREE.DoubleSide, fog: true, transparent: true });
   const deckBottom = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000).rotateX(-Math.PI / 2), deckMat(0x9aa2ab));
   const deckTop = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000).rotateX(-Math.PI / 2), deckMat(0xffffff));
   deckBottom.visible = deckTop.visible = false;
   scene.add(deckBottom, deckTop);
-  const LAYERS = { overcast: [450, 1050], low: [200, 900], rain: [340, 2100] };
+  const LAYERS = { overcast: [450, 1050], low: [200, 900], rain: [340, 2100], variable: [420, 1600] };
+  // Weather as a continuous state: cumulus coverage, overcast deck opacity, rain, fog.
+  const STATES = {
+    clear: { cov: 0, deck: 0, rain: 0 }, scattered: { cov: 1, deck: 0, rain: 0 },
+    overcast: { cov: 0, deck: 1, rain: 0 }, low: { cov: 0, deck: 1, rain: 0 },
+    rain: { cov: 0, deck: 1, rain: 1 }, fog: { cov: 0, deck: 0, rain: 0 },
+  };
+  // 'variable': a ~16 minute cycle. Fair-weather cumulus build up, an overcast moves in, a rain
+  // shower passes, then it clears. [minutes, cumulus cover, deck, rain]
+  const CYCLE = [[0, 0.35, 0, 0], [3, 1, 0, 0], [5, 0.6, 0.5, 0], [6.5, 0, 1, 0], [8, 0, 1, 1], [11, 0, 1, 1],
+    [12.5, 0, 1, 0], [14, 0.3, 0.4, 0], [15.5, 0.35, 0, 0]];
+  const PERIOD = CYCLE[CYCLE.length - 1][0] * 60;
+  const wx = { cov: 1, deck: 0, rain: 0 };
+  let wxTime = 0;
+  function cycleState(t) {
+    const m = (t % PERIOD) / 60;
+    for (let i = 1; i < CYCLE.length; i++) {
+      if (m <= CYCLE[i][0]) {
+        const a = CYCLE[i - 1], b = CYCLE[i], k = smooth(a[0], b[0], m);
+        wx.cov = a[1] + (b[1] - a[1]) * k; wx.deck = a[2] + (b[2] - a[2]) * k; wx.rain = a[3] + (b[3] - a[3]) * k;
+        return;
+      }
+    }
+  }
   let cloudMode = 'scattered';
   // Base (clear-sky) values for the current time of day, blended per frame.
   const base = { horizon: new THREE.Color(), zenith: new THREE.Color(), sun: new THREE.Color(), sunI: 1, hemiI: 1, fog: [3000, 38000], hemiSky: new THREE.Color() };
@@ -174,28 +197,39 @@ export function createSky(scene, renderer) {
     env,
     setTimeOfDay,
     setShadows(on) { sun.castShadow = on; },
-    // 'clear', 'scattered', 'overcast' (base 1,500 ft), 'low' (base 650 ft) or 'fog'.
+    // 'clear', 'scattered', 'overcast' (base 1,500 ft), 'low' (base 650 ft), 'rain', 'fog' or
+    // 'variable' (changes as you fly).
     setClouds(mode) {
       cloudMode = mode;
-      clouds.group.visible = mode === 'scattered';
       const layer = LAYERS[mode];
-      deckBottom.visible = deckTop.visible = !!layer;
       if (layer) { deckBottom.position.y = layer[0]; deckTop.position.y = layer[1]; }
+      if (mode === 'variable') { wxTime = 0; cycleState(0); } else Object.assign(wx, STATES[mode] ?? STATES.clear);
       envHaze = -1;
     },
     get cloudMode() { return cloudMode; },
-    get raining() { return cloudMode === 'rain'; },
+    // Rain intensity 0..1 and whether it's properly raining (wet runways).
+    get rain() { return wx.rain; },
+    get raining() { return wx.rain > 0.3; },
+    get weatherState() { return { ...wx }; },
+    // Base and top of the overcast layer (m), or null.
+    get cloudLayer() { return LAYERS[cloudMode] ?? null; },
+    // Skip ahead through the changing-weather cycle (seconds).
+    advanceWeather(sec) { wxTime += sec; },
     // 0 = clear sky around the camera, 1 = under overcast / in cloud / in fog.
     get haze() { return domeMat.uniforms.haze.value; },
     // Cumulus density at the camera (0 outside, 1 deep in a cloud).
     get inCloud() { return cumulus; },
-    densityAt: (x, y, z) => (cloudMode === 'scattered' ? clouds.densityAt(x, y, z) : 0),
+    densityAt: (x, y, z) => (wx.cov > 0.01 ? clouds.densityAt(x, y, z, wx.cov) : 0),
     update(camera, focus, dt = 1 / 60) {
       dome.position.copy(camera.position);
       cloudShadow.sunDir.value.copy(env.sunDir);
-      cloudShadow.strength.value = cloudMode === 'scattered' ? (env.night ? 0.3 : 0.72) : 0;
+      if (cloudMode === 'variable') { wxTime += dt; cycleState(wxTime); }
+      clouds.setCover(wx.cov);
+      // Under a closing overcast there's no direct sun left to cast cumulus shadows.
+      cloudShadow.strength.value = wx.cov > 0.01 ? (env.night ? 0.3 : 0.72) * (1 - wx.deck) : 0;
+      cloudShadow.cover.value.set(0, 1, 2).multiplyScalar(-1 / 3).addScalar(wx.cov).multiplyScalar(3).clampScalar(0, 1);
       const cp = camera.position;
-      const target = cloudMode === 'scattered' ? clouds.densityAt(cp.x, cp.y, cp.z) : 0;
+      const target = wx.cov > 0.01 ? clouds.densityAt(cp.x, cp.y, cp.z, wx.cov) : 0;
       cumulus += (target - cumulus) * Math.min(1, 12 * dt);
       clouds.update(env.sunDir, env.horizon, scene.fog);
       // Blend lighting, fog and sky for the weather around the camera.
@@ -204,18 +238,26 @@ export function createSky(scene, renderer) {
       grey.setRGB(lum, lum, lum * 1.04).multiplyScalar(0.9);
       let below = 0, inside = 0, fogNear = base.fog[0], fogFar = base.fog[1];
       const layer = LAYERS[cloudMode];
-      if (layer) {
+      const deck = wx.deck;
+      deckBottom.visible = deckTop.visible = !!layer && deck > 0.01;
+      if (layer && deck > 0.01) {
         deckBottom.position.x = deckTop.position.x = camera.position.x;
         deckBottom.position.z = deckTop.position.z = camera.position.z;
         // The deck follows the camera; shift its texture so the clouds stay fixed in the world.
         deckTex.offset.set((camera.position.x / 1500) % 1, (-camera.position.z / 1500) % 1);
         const [b, t] = layer;
-        below = 1 - smooth(b - 60, b + 10, h);
-        inside = smooth(b - 30, b + 30, h) * (1 - smooth(t - 30, t + 30, h));
-        fogNear = 300 * below; fogFar = 6000 + (layer === LAYERS.low ? 0 : 3000);
-        if (h > t) { fogNear = base.fog[0]; fogFar = base.fog[1]; }
-        deckBottom.material.color.copy(grey).multiplyScalar(cloudMode === 'rain' ? 0.6 : 0.85);
-        if (cloudMode === 'rain') { grey.multiplyScalar(0.72); fogFar = Math.min(fogFar, below > 0.5 ? 5000 : fogFar); }
+        below = (1 - smooth(b - 60, b + 10, h)) * deck;
+        // A broken layer only whites you out once it has closed up.
+        inside = smooth(b - 30, b + 30, h) * (1 - smooth(t - 30, t + 30, h)) * smooth(0.45, 1, deck);
+        if (h <= t) {
+          // Visibility under the deck: a broken layer still lets you see a long way.
+          fogNear += (300 * below - fogNear) * deck;
+          fogFar += (6000 + (layer === LAYERS.low ? 0 : 3000) - fogFar) * deck;
+        }
+        const r = wx.rain;
+        deckBottom.material.color.copy(grey).multiplyScalar(0.85 - 0.25 * r);
+        deckBottom.material.opacity = deckTop.material.opacity = Math.min(1, deck * 1.3);
+        if (r > 0) { grey.multiplyScalar(1 - 0.28 * r); fogFar = Math.min(fogFar, below > 0.5 ? fogFar + (5000 - fogFar) * r : fogFar); }
         deckTop.material.color.copy(base.sun).multiplyScalar(env.night ? 0.35 : 1);
       } else if (cloudMode === 'fog') {
         const clear = smooth(60, 450, h);
@@ -289,45 +331,50 @@ function buildClouds() {
   const puffs = [];
   let s = 99;
   const rnd = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
-  for (let c = 0; c < 130; c++) {
+  for (let c = 0; c < 200; c++) {
     const cx = (rnd() - 0.5) * 44000, cz = (rnd() - 0.5) * 44000;
     const base = 1200 + rnd() * 800;
     const size = 220 + rnd() * 380;
     const n = 8 + Math.floor(rnd() * 10);
+    const cr = (c * 0.6180339887) % 1; // per-cloud value: the cloud shows when coverage exceeds it
     for (let p = 0; p < n; p++) {
       const up = rnd();
       // A flat base and a heaped top: puffs higher up are smaller and nearer the middle.
       const spread = 1 - 0.55 * up;
       const r = size * (0.32 + 0.28 * rnd()) * (1 - 0.3 * up);
-      puffs.push([cx + (rnd() - 0.5) * size * 2.0 * spread, base + r * 0.55 + up * size * 0.75, cz + (rnd() - 0.5) * size * 1.4 * spread, r, base, rnd()]);
+      puffs.push([cx + (rnd() - 0.5) * size * 2.0 * spread, base + r * 0.55 + up * size * 0.75, cz + (rnd() - 0.5) * size * 1.4 * spread, r, base, rnd(), cr]);
     }
   }
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
   geo.setIndex([0, 1, 2, 0, 2, 3]);
   geo.setAttribute('aPuff', new THREE.InstancedBufferAttribute(new Float32Array(puffs.flatMap((p) => p.slice(0, 4))), 4));
-  geo.setAttribute('aExtra', new THREE.InstancedBufferAttribute(new Float32Array(puffs.flatMap((p) => [p[4], p[5]])), 2));
+  geo.setAttribute('aExtra', new THREE.InstancedBufferAttribute(new Float32Array(puffs.flatMap((p) => [p[4], p[5], p[6]])), 3));
   geo.instanceCount = puffs.length;
   const uniforms = {
     sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunColor: { value: new THREE.Color(1, 1, 1) },
     ambient: { value: new THREE.Color(0.6, 0.65, 0.75) }, shadeColor: { value: new THREE.Color(0.55, 0.58, 0.65) },
-    fogColor: { value: new THREE.Color() }, fogNear: { value: 1 }, fogFar: { value: 1e5 },
+    fogColor: { value: new THREE.Color() }, fogNear: { value: 1 }, fogFar: { value: 1e5 }, cover: { value: 1 },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms, transparent: true, depthWrite: false,
     vertexShader: /* glsl */`
       attribute vec4 aPuff;   // centre xyz, radius
-      attribute vec2 aExtra;  // cloud base height, random
+      attribute vec3 aExtra;  // cloud base height, random, cloud's coverage threshold
+      uniform float cover;
       varying vec2 vUv;
       varying vec3 vWorld;
-      varying float vBase, vRand, vR;
+      varying float vBase, vRand, vR, vFade;
       varying vec3 vCentre;
       void main() {
         vUv = position.xy;
         vCentre = aPuff.xyz;
+        // Clouds grow in as the coverage rises past their threshold and shrink away as it falls.
+        vFade = clamp((cover - aExtra.z) * 8.0, 0.0, 1.0);
+        if (vFade <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
         vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-        vWorld = aPuff.xyz + (right * position.x + up * position.y) * aPuff.w;
+        vWorld = aPuff.xyz + (right * position.x + up * position.y) * aPuff.w * (0.55 + 0.45 * vFade);
         vBase = aExtra.x; vRand = aExtra.y; vR = aPuff.w;
         gl_Position = projectionMatrix * viewMatrix * vec4(vWorld, 1.0);
       }`,
@@ -336,7 +383,7 @@ function buildClouds() {
       uniform float fogNear, fogFar;
       varying vec2 vUv;
       varying vec3 vWorld;
-      varying float vBase, vRand, vR;
+      varying float vBase, vRand, vR, vFade;
       varying vec3 vCentre;
       float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
       float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -361,7 +408,7 @@ function buildClouds() {
         float d = length(vWorld - cameraPosition);
         // Fade a puff out as the camera reaches it, so flying in never shows a flat card;
         // the white-out fog takes over inside the cloud.
-        alpha *= smoothstep(0.25, 1.1, length(vCentre - cameraPosition) / vR);
+        alpha *= smoothstep(0.25, 1.1, length(vCentre - cameraPosition) / vR) * vFade;
         col = mix(col, fogColor, smoothstep(fogNear, fogFar, d));
         gl_FragColor = vec4(col, alpha);
         #include <colorspace_fragment>
@@ -385,11 +432,13 @@ function buildClouds() {
   return {
     group,
     // Cloud density 0..1 at a point: 1 deep inside a puff, fading out towards its edge.
-    densityAt(x, y, z) {
+    setCover(c) { uniforms.cover.value = c; group.visible = c > 0.01; },
+    densityAt(x, y, z, cover = 1) {
       const list = grid.get(Math.floor(x / GRID) * 4096 + Math.floor(z / GRID));
       if (!list) return 0;
       let d = 0;
       for (const p of list) {
+        if (p[6] > cover - 0.06) continue;
         const dx = x - p[0], dy = (y - p[1]) * 1.3, dz = z - p[2];
         const q = Math.sqrt(dx * dx + dy * dy + dz * dz) / p[3];
         if (q < 1) d = Math.max(d, smooth(1, 0.55, q));
@@ -402,13 +451,17 @@ function buildClouds() {
       cv.width = cv.height = S;
       const g = cv.getContext('2d');
       g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
+      // Clouds are split by coverage threshold into the red, green and blue channels, so the
+      // shadows can follow the cumulus as they build up and decay.
+      g.globalCompositeOperation = 'lighter';
       const k = S / CLOUD_EXTENT;
       for (const p of puffs) {
         const x = (p[0] / CLOUD_EXTENT + 0.5) * S, y = (p[2] / CLOUD_EXTENT + 0.5) * S, r = p[3] * 0.95 * k;
+        const ch = ['255,0,0', '0,255,0', '0,0,255'][Math.min(2, Math.floor(p[6] * 3))];
         const grad = g.createRadialGradient(x, y, 0, x, y, r);
-        grad.addColorStop(0, 'rgba(255,255,255,0.55)');
-        grad.addColorStop(0.6, 'rgba(255,255,255,0.4)');
-        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        grad.addColorStop(0, `rgba(${ch},0.45)`);
+        grad.addColorStop(0.6, `rgba(${ch},0.3)`);
+        grad.addColorStop(1, `rgba(${ch},0)`);
         g.fillStyle = grad;
         g.fillRect(x - r, y - r, 2 * r, 2 * r);
       }

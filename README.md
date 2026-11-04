@@ -107,6 +107,10 @@ Skyhaven's runway is 2,400 m so the F-16 can operate from it. Eastfield (850 m) 
     flat. Inside it you're in white-out. Above it you're in sunshine over a sea of cloud, with the mountain
     tops poking through.
   - **Fog:** visibility under a kilometre near the ground, clearing as you climb.
+  - **Changing:** the weather evolves over a cycle of about 16 minutes. Fair-weather cumulus build up,
+    an overcast moves in over them, a rain shower passes (gusty, with wet runways), and then it clears
+    again. Clouds grow and fade rather than popping in, their shadows follow them, and the sim tells you
+    when a shower is moving in and when it's clearing.
 
   Some missions set their own weather.
 - **ILS:** both ends of Skyhaven's runway have an instrument landing system.

@@ -56,7 +56,7 @@ export class Weather {
     const low = 1.2 - clamp(agl / 1500, 0, 0.8);
     // Convective bumps inside cumulus (cloud = density at the aircraft, set by the sim).
     const cloud = this.cloud ?? 0;
-    const amp = s.turb * rough * low + 2.2 * cloud;
+    const amp = s.turb * rough * low + 2.2 * cloud + 0.8 * (this.shower ?? 0); // gusty in showers
     if (amp > 0) {
       const t = this.time;
       out.x += amp * n.fbm(pos.x * 0.01 + t * 0.7, pos.z * 0.01, 3);
