@@ -278,7 +278,7 @@ export function obstacleAt(p) {
         if ((p.x - t.x) ** 2 + (p.z - t.z) ** 2 < r * r) return 'Hit a tree';
       }
       const boxes = boxGrid.get(_key(ix + a, iz + b));
-      if (boxes) for (const h of boxes) if (insideBox(p, h)) return 'Hit a house';
+      if (boxes) for (const h of boxes) if (insideBox(p, h)) return h.label ?? 'Hit a house';
     }
   }
   for (const b of buildings) if (insideBox(p, b)) return 'Hit a building';
@@ -331,6 +331,57 @@ function periodicNoiseTexture(size = 256) {
 
 const detailTex = periodicNoiseTexture();
 
+// Farmland patchwork, applied in the terrain fragment shader (coarse mesh and detail patch):
+// parcels of different crops on flat lowland, laid out on a grid whose orientation changes from
+// area to area, with crop rows close up and darker hedgerows between parcels. Needs detailMap,
+// vWPos and the world-space normal; keeps clear of the airfields.
+export const FIELDS_GLSL = /* glsl */`
+  {
+    vec3 wn = normalize((vec4(normalize(vNormal), 0.0) * viewMatrix).xyz);
+    float fh = vWPos.y;
+    float region = texture2D(detailMap, vWPos.xz / 2600.0 + 0.37).b;
+    float fmask = smoothstep(0.985, 0.995, wn.y) * smoothstep(8.0, 14.0, fh) * (1.0 - smoothstep(170.0, 230.0, fh))
+                * smoothstep(0.52, 0.44, region);
+    ${AIRFIELDS.map((f) => `{
+      vec2 d = vWPos.xz - vec2(${f.x.toFixed(1)}, ${f.z.toFixed(1)});
+      float al = abs(dot(d, vec2(${f.dir.x.toFixed(5)}, ${f.dir.z.toFixed(5)}))) - ${(f.length / 2 + 250).toFixed(1)};
+      float ac = abs(dot(d, vec2(${(-f.dir.z).toFixed(5)}, ${f.dir.x.toFixed(5)}))) - ${(f.margin + 200).toFixed(1)};
+      fmask *= smoothstep(0.0, 150.0, max(al, ac));
+    }`).join('\n    ')}
+    if (fmask > 0.01) {
+      // Each 2.5 km area is laid out at its own fixed angle (straight parcels, different farms).
+      vec2 farm = floor(vWPos.xz / 2500.0);
+      float ang = (fract(sin(dot(farm, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 1.6;
+      vec2 q = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * vWPos.xz;
+      vec2 cs = vec2(170.0, 115.0);
+      vec2 id = floor(q / cs);
+      // Split alternate parcels lengthwise so they aren't all the same size.
+      float split = fract(sin(dot(id, vec2(41.3, 289.1))) * 9137.7);
+      vec2 f = fract(q / cs);
+      if (split > 0.55) { id.x += step(0.5, f.x) * 0.5; f.x = fract(f.x * 2.0); cs.x *= 0.5; }
+      float r = fract(sin(dot(id, vec2(127.1, 311.7))) * 43758.5453);
+      vec3 crop = r < 0.22 ? vec3(0.62, 0.55, 0.26)    // ripe wheat
+                : r < 0.40 ? vec3(0.35, 0.47, 0.17)    // young cereal
+                : r < 0.55 ? vec3(0.34, 0.25, 0.16)    // ploughed soil
+                : r < 0.72 ? vec3(0.42, 0.52, 0.22)    // pasture
+                : r < 0.85 ? vec3(0.55, 0.53, 0.30)    // stubble
+                :            vec3(0.27, 0.38, 0.14);   // maize
+      crop = crop * crop * 1.15; // to linear-ish
+      float fd = length(vWPos - cameraPosition);
+      // Crop rows, fading out with distance before they can alias.
+      float rows = 0.5 + 0.5 * sin(q.x * (r < 0.55 ? 2.4 : 1.3));
+      crop *= 1.0 + (rows - 0.5) * 0.22 * (1.0 - smoothstep(60.0, 220.0, fd));
+      // Hedgerows along parcel edges (about 3 m wide), fading out far away.
+      vec2 e = min(f, 1.0 - f) * cs;
+      // Hedges widen a little with distance (so they don't break up into dots), then fade.
+      float hw = 2.0 + fd * 0.0025;
+      float hedge = (1.0 - smoothstep(hw * 0.6, hw * 1.4, min(e.x, e.y))) * (1.0 - smoothstep(3000.0, 8000.0, fd)) * 0.8;
+      crop = mix(crop, vec3(0.07, 0.12, 0.04), hedge * 0.85);
+      diffuseColor.rgb = mix(diffuseColor.rgb, crop * (0.9 + 0.2 * k), fmask * 0.9);
+    }
+  }
+`;
+
 function buildTerrainMesh() {
   const pos = new Float32Array(VERTS * VERTS * 3);
   for (let i = 0; i < VERTS; i++) {
@@ -357,8 +408,8 @@ function buildTerrainMesh() {
 
   const C = (hex) => new THREE.Color(hex);
   const sand = C('#d2c08e'), wetSand = C('#8f8160'), grass = C('#5d8a38'), grass2 = C('#86a24a'),
-    forest = C('#38572a'), dirt = C('#7a6a4c'), rock = C('#80796f'), rock2 = C('#5c5852'), snow = C('#f2f4f7'),
-    field = C('#b0a75c'), field2 = C('#6f9b3c');
+    forest = C('#38572a'), dirt = C('#7a6a4c'), rock = C('#80796f'), rock2 = C('#5c5852'), snow = C('#f2f4f7');
+
   const nrm = geo.attributes.normal.array;
   const col = new Float32Array(pos.length);
   const c = new THREE.Color();
@@ -367,14 +418,12 @@ function buildTerrainMesh() {
     const up = nrm[v * 3 + 1];
     const n1 = noise.fbm(x * 0.002, z * 0.002, 3);
     const n2 = noise.fbm(x * 0.0007 + 40, z * 0.0007, 3);
-    const n3 = noise.value(x * 0.0035 + 9, z * 0.0035);
     if (h < -1) c.copy(wetSand);
     else if (h < 5 + n1 * 3) c.copy(sand);
     else {
       c.copy(grass).lerp(grass2, clamp(0.5 + n1, 0, 1));
       if (n2 > 0.12 && h < 700) c.lerp(forest, smoothstep(0.12, 0.3, n2));
       // Patchwork of farm fields in the lowlands.
-      if (n2 < -0.15 && h < 220 && up > 0.97) c.lerp(n3 > 0 ? field : field2, smoothstep(-0.15, -0.3, n2) * 0.75);
       c.lerp(dirt, smoothstep(0.92, 0.82, up) * 0.6);
       const rockT = Math.max(smoothstep(0.82, 0.68, up), smoothstep(650, 950, h + n1 * 120));
       c.lerp(rock.clone().lerp(rock2, clamp(0.5 + n1, 0, 1)), rockT);
@@ -411,7 +460,8 @@ function buildTerrainMesh() {
       float nearK = 1.0 - smoothstep(120.0, 1100.0, camDist);
       float midK = 1.0 - smoothstep(2000.0, 9000.0, camDist);
       float k = 1.0 + (d1.r - 0.5) * 0.5 * nearK + (d2.g - 0.5) * 0.45 * midK + (d3.b - 0.5) * 0.35;
-      diffuseColor.rgb *= k;`);
+      diffuseColor.rgb *= k;
+      ${FIELDS_GLSL}`);
   };
   applyTerrainShadow(mat, { relief: true });
   const mesh = new THREE.Mesh(geo, mat);
@@ -938,6 +988,50 @@ function buildAirportLights(list) {
   };
 }
 
+// Boulders and scree on steep or high ground: low-poly rocks, irregularly scaled and tilted,
+// half-buried in the slope. Solid for collisions.
+function buildRocks(maxRocks) {
+  const geo = new THREE.IcosahedronGeometry(1, 1);
+  // Roughen the shape once; every instance is also scaled differently.
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const k = 0.75 + 0.5 * ((Math.sin(i * 12.9898) * 43758.5453) % 1 + 1) % 1;
+    p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.8, p.getZ(i) * k);
+  }
+  geo.computeVertexNormals();
+  const rocks = new THREE.InstancedMesh(geo, applyTerrainShadow(new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true })), maxRocks);
+  rocks.castShadow = true;
+  rocks.receiveShadow = true;
+  let s = 4242;
+  const rnd = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
+  const col = new THREE.Color(), cA = new THREE.Color('#7d776d'), cB = new THREE.Color('#5a554e'), cC = new THREE.Color('#8c8679');
+  let n = 0;
+  for (let tries = 0; tries < maxRocks * 30 && n < maxRocks; tries++) {
+    const x = (rnd() - 0.5) * 18000, z = (rnd() - 0.5) * 20000;
+    const h = terrainHeight(x, z);
+    if (h < 120) continue;
+    const slope = Math.hypot(terrainHeight(x + 6, z) - terrainHeight(x - 6, z), terrainHeight(x, z + 6) - terrainHeight(x, z - 6)) / 12;
+    // Mostly on steep slopes and high ground, a scattering elsewhere.
+    const want = smoothstep(0.25, 0.7, slope) * 0.9 + smoothstep(500, 900, h) * 0.6 + 0.02;
+    if (rnd() > want) continue;
+    if (VILLAGES.some((v) => (x - v.x) ** 2 + (z - v.z) ** 2 < v.r * v.r)) continue;
+    // Clusters: small scree around a bigger boulder.
+    const big = rnd() < 0.25;
+    const size = big ? 1.8 + rnd() * 2.6 : 0.5 + rnd() * 1.1;
+    pos.set(x, h - size * 0.35, z);
+    q.setFromEuler(e.set((rnd() - 0.5) * 0.5, rnd() * 6.28, (rnd() - 0.5) * 0.5));
+    sc.set(size * (0.8 + rnd() * 0.5), size * (0.6 + rnd() * 0.5), size * (0.8 + rnd() * 0.5));
+    m.compose(pos, q, sc);
+    rocks.setMatrixAt(n, m);
+    rocks.setColorAt(n, col.copy(cA).lerp(rnd() < 0.5 ? cB : cC, rnd()));
+    n++;
+    if (big) addBoxObstacle({ cx: x, cz: z, cy: h + size * 0.2, hx: sc.x * 0.8, hy: sc.y * 0.75, hz: sc.z * 0.8, cos: 1, sin: 0, label: 'Hit a boulder' });
+  }
+  rocks.count = n;
+  return rocks;
+}
+
 function buildTrees(maxTrees) {
   const trunkGeo = new THREE.CylinderGeometry(0.25, 0.35, 3, 5).translate(0, 1.5, 0);
   const crownGeo = new THREE.ConeGeometry(2.6, 8, 7).translate(0, 6.5, 0);
@@ -1001,7 +1095,7 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
   const coarseMesh = buildTerrainMesh();
   scene.add(coarseMesh);
   const detail = createDetailPatch({ heights, VERTS, CELLS, CELL, HALF, colors: coarseMesh.geometry.attributes.color.array,
-    detailTex, applyTerrainShadow, fields: AIRFIELDS, DETAIL, cells: quality === 'low' ? 120 : 200 });
+    detailTex, applyTerrainShadow, fields: AIRFIELDS, DETAIL, fieldsGLSL: FIELDS_GLSL, cells: quality === 'low' ? 120 : 200 });
   scene.add(detail.mesh);
   coarseMesh.material.userData.patch = detail.patchUniform;
   const sea = buildSea(env);
@@ -1013,6 +1107,7 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
   scene.add(airportLights.points);
   scene.add(buildVillages(nightLights));
   scene.add(buildTrees(quality === 'low' ? 3500 : 10000));
+  scene.add(buildRocks(quality === 'low' ? 2500 : 7000));
 
   // Night lights as fixed-pixel-size points so they stay visible from far away.
   const lp = new Float32Array(nightLights.length * 3), lc = new Float32Array(nightLights.length * 3);

@@ -496,8 +496,29 @@ function handleMission(dt) {
   }
 }
 
+let failSmokeT = 0;
+const _smokeV = new THREE.Vector3(), _smokeC = new THREE.Color();
 function updateParticles(dt) {
   if (aircraft.crashed) return;
+  // Engine failure: a smoke trail (oil smoke from the prop's cowling, fuel vapour and smoke from
+  // the jet's nozzle) that thins out over about 20 s.
+  const failed = aircraft.engineFailed || (kind() === 'jet' && aircraft.fuel <= 0);
+  failSmokeT = failed ? failSmokeT + dt : 0;
+  if (failed && !aircraft.onGround) {
+    const fade = Math.max(0.2, 1 - failSmokeT / 30);
+    // Several puffs a frame, spread along the path flown, so the trail is continuous.
+    for (let e = 0, n = Math.min(4, Math.round(dt * 40 * fade + Math.random())); e < n; e++) {
+      const jet = kind() === 'jet';
+      _v.set(0, jet ? -0.05 : -0.3, jet ? 5.6 : -2.6).applyQuaternion(aircraft.quat).add(aircraft.pos).addScaledVector(aircraft.vel, -dt * Math.random());
+      // Puffs are left behind in the air (slow down quickly), spreading and rising a little.
+      _smokeV.copy(aircraft.vel).multiplyScalar(0.15).add(new THREE.Vector3((Math.random() - 0.5) * 2, 0.6, (Math.random() - 0.5) * 2));
+      effects.emit(_v, _smokeV, {
+        color: _smokeC.setHex(jet ? 0x9a9a9a : 0x3a3633).multiplyScalar(0.8 + Math.random() * 0.4),
+        life: 7 + Math.random() * 4, size0: jet ? 1.8 : 1.6, size1: (jet ? 18 : 15) * (0.7 + Math.random() * 0.6),
+        alpha: (jet ? 0.42 : 0.55) * fade * (0.6 + Math.random() * 0.4), drag: 2.5, rise: 0.4,
+      });
+    }
+  }
   // Dust when rolling fast on grass.
   if (aircraft.onGround && aircraft.speed > 6 && !runwayAt(aircraft.pos.x, aircraft.pos.z) && Math.random() < dt * 25) {
     effects.dust(gearWorld(Math.random() < 0.5 ? 1 : 2));
@@ -706,4 +727,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

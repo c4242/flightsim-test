@@ -244,6 +244,12 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
   houses, so the ground you see is the ground you touch. The GPU copy of the function matches the
   JavaScript one bit for bit (same integer hash), and the detail fades out at the patch edge to meet the
   coarse mesh.
+- **Farmland:** flat lowland is covered with a patchwork of parcels (ripe wheat, young cereal, ploughed
+  soil, pasture, stubble, maize) laid out at a different angle on each farm. Up close you see crop rows,
+  and dark hedgerows run between the parcels.
+- **Boulders and scree:** thousands of rocks on steep slopes and high ground. The big ones are solid.
+- **Engine-failure smoke:** a failed prop engine trails dark oil smoke, and a flamed-out jet grey smoke.
+  The trail thins over about 30 seconds.
 - **Terrain relief:** fine bumps in the lighting at two scales, so slopes have texture rather than looking
   like smooth facets.
 - **Aerial perspective:** haze is densest low down and thins with height (about a 1.8 km scale height).

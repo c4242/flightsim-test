@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 
-export function createDetailPatch({ heights, VERTS, CELLS, CELL, HALF, colors, detailTex, applyTerrainShadow, fields, DETAIL, cells = 200 }) {
+export function createDetailPatch({ heights, VERTS, CELLS, CELL, HALF, colors, detailTex, applyTerrainShadow, fields, DETAIL, fieldsGLSL = '', cells = 200 }) {
   const SPACING = 12;
   const HALFP = (cells / 2) * SPACING;
 
@@ -142,7 +142,8 @@ export function createDetailPatch({ heights, VERTS, CELLS, CELL, HALF, colors, d
         float nearK = 1.0 - smoothstep(120.0, 1100.0, camDist);
         float midK = 1.0 - smoothstep(2000.0, 9000.0, camDist);
         float k = 1.0 + (d1.r - 0.5) * 0.5 * nearK + (d2.g - 0.5) * 0.45 * midK + (d3.b - 0.5) * 0.35;
-        diffuseColor.rgb *= k;`);
+        diffuseColor.rgb *= k;
+        ${fieldsGLSL}`);
   };
   applyTerrainShadow(mat, { relief: true });
   const mesh = new THREE.Mesh(geo, mat);
