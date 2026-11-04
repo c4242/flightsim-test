@@ -250,16 +250,17 @@ function updateCamera(dt) {
     if (camera.position.y < ground) camera.position.y = ground;
     if (aircraft.crashed) camera.lookAt(aircraft.pos);
   }
-  // Buffet near the stall, rumble on the ground, jolts from turbulence and landings.
+  // Vibration only where a real aircraft vibrates: airframe buffet at high angle of attack (the
+  // F-16 from about 15° AoA, the light aircraft at the stall), rumble on the ground, and decaying
+  // jolts from touchdowns and bird strikes. Steady G alone doesn't shake the view. A few
+  // incommensurate sine waves make it a vibration rather than per-frame jitter.
   let s = shake;
-  if (aircraft.stalling) s += 0.004;
-  if (aircraft.onGround) s += Math.min(0.0015, aircraft.speed * 0.00005) * (runwayAt(aircraft.pos.x, aircraft.pos.z) ? 0.5 : 2);
-  if (cameraMode === 'cockpit' || cameraMode === 'chase') {
-    s += Math.abs(aircraft.gLoad - 1) * 0.0008;
-    if (s > 0) {
-      camera.rotateX((Math.random() - 0.5) * s);
-      camera.rotateY((Math.random() - 0.5) * s);
-    }
+  if (!aircraft.onGround) s += kind() === 'jet' ? 0.0022 * clamp((aircraft.alpha - 0.26) / 0.18, 0, 1) : aircraft.stalling ? 0.0035 : 0;
+  else s += Math.min(0.0012, aircraft.speed * 0.00004) * (runwayAt(aircraft.pos.x, aircraft.pos.z) ? 0.5 : 2);
+  if ((cameraMode === 'cockpit' || cameraMode === 'chase') && s > 1e-5) {
+    const t = clock;
+    camera.rotateX(s * 0.5 * (Math.sin(t * 61) + 0.6 * Math.sin(t * 37 + 1.3) + 0.3 * Math.sin(t * 89 + 0.4)));
+    camera.rotateY(s * 0.5 * (Math.sin(t * 53 + 0.7) + 0.6 * Math.sin(t * 29 + 2.1) + 0.3 * Math.sin(t * 97)));
   }
   shake *= Math.exp(-dt * 6);
   // A close near plane is only needed inside the cockpit; elsewhere a farther one keeps depth precision.
