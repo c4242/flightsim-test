@@ -61,7 +61,11 @@ The F-16 is modelled as realistically as a browser game allows:
   - Control authority therefore runs out naturally at low speed. The 3D model shows where the surfaces
     actually are.
   - In pitch, the side-stick commands G: neutral is 1 g, full aft 9 g, full forward −3 g. Integral
-    action trims out errors, and a G limiter prevents overshoot.
+    action trims out errors (only in steady flight, so it can't wind up during a manoeuvre), and a G
+    limiter prevents overshoot.
+  - The pitch response is well damped (a short period of about 4.5 rad/s, damping ratio near 0.9).
+    Pull hard and let go, and the jet returns to 1 g in about a second and a half without bouncing.
+    At low dynamic pressure it changes AoA more gently, because the stabilator has less authority.
   - The AoA limiter stops at 25°. It anticipates: at low speed, where there's little nose-down
     authority, it limits the pitch rate so the jet doesn't overshoot into a deep stall.
   - Roll is a rate command of up to about 270°/s, made about the velocity vector, and sideslip is
@@ -80,8 +84,8 @@ Checked performance from the test scripts:
 | Military power at sea level | M0.91 | ≈M0.92 |
 | Top speed at 36,000 ft, full afterburner | M2.02 | M2.05 |
 | Afterburner liftoff (full fuel, rotating at 150 kt) | ≈700 m / ≈175 KCAS | ≈450 m |
-| Peak G, full aft stick at 470 KCAS | 8.95 (9.2 at higher speed) | 9 |
-| Peak G at 330 KCAS (lift-limited) | 7.6 | — |
+| Peak G, full aft stick at 475 KCAS (8 g reached in 0.7 s) | 8.8 | 9 |
+| Peak G at 270–330 KCAS (lift-limited) | 6.8 | — |
 | Maximum roll rate | 270°/s | ≈270°/s |
 | Engine-out glide ratio at 200 KCAS | 7.8 | ≈7–8 |
 | Approach | 13° AoA at ≈147 KCAS | 13° AoA, 140–160 KCAS |

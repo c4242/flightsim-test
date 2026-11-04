@@ -264,11 +264,17 @@ export const F16 = {
       // Angle of attack needed for that load factor, then the AoA limiter (25° / -5°).
       const clReq = nz * ac.mass * G / Math.max(200, s.q * S_REF);
       const nzErr = nz - s.nz;
-      if (Math.abs(nzErr) < 2 && !ac.onGround) ac.nzInt = clamp(ac.nzInt + nzErr * 0.06 * dt, -0.05, 0.05);
+      // Only in steady flight: integrating through a transient (G still settling after a pull) would
+      // wind up and overshoot the other way.
+      const steady = Math.abs(nzErr) < 0.4 && Math.abs(w.x - s.gammaDot) < 0.03;
+      if (steady && !ac.onGround) ac.nzInt = clamp(ac.nzInt + nzErr * 0.2 * dt, -0.05, 0.05);
       ac.alphaCmd = clamp(alphaForCL(clReq, s.mach) + ac.nzInt, -0.087, 0.436);
       if (ac.alphaCmd >= 0.436 || ac.alphaCmd <= -0.087) ac.nzInt *= 1 - dt; // no wind-up on the limiter
       const err = clamp(ac.alphaCmd - s.alpha, -0.25, 0.25);
-      qCmd = s.gammaDot + clamp(err * 5, -0.6, 0.6);
+      // AoA change rate: brisk at high dynamic pressure, gentler when the stabilator has less
+      // authority to stop the motion again (so there's no overshoot when you let go).
+      const aRate = clamp(0.2 + s.q / 1000 * 0.025, 0.25, 0.6);
+      qCmd = s.gammaDot + clamp(err * 2.5, -aRate, aRate);
     } else {
       // Takeoff and landing gains: the stick commands pitch rate; released, the system holds the
       // angle of attack it was left at (trim nudges it). AoA is limited to 20°.
@@ -280,7 +286,7 @@ export const F16 = {
         ac.alphaRef = s.alpha;
       } else {
         ac.alphaRef = clamp(ac.alphaRef + ac.trim * 0.05 * dt, -0.05, 0.35);
-        qCmd = s.gammaDot + clamp((ac.alphaRef - s.alpha) * 3, -0.25, 0.25);
+        qCmd = s.gammaDot + clamp((ac.alphaRef - s.alpha) * 2.5, -0.25, 0.25);
       }
       if (s.alpha > 0.35 && !ac.onGround) qCmd = Math.min(qCmd, s.gammaDot - (s.alpha - 0.35) * 3);
       ac.alphaCmd = ac.alphaRef;
@@ -317,7 +323,10 @@ export const F16 = {
     } else {
       // Desired angular accelerations, then the moments (and coefficients) that produce them
       // (bounded so a large error never asks for more than the surfaces can deliver smoothly).
-      const qdD = clamp(6 * (qCmd - q), -2, 2), pdD = clamp(10 * (pCmd - p), -12, 12), rdD = clamp(5 * (rCmd - r), -2, 2);
+      // In pitch the angle-of-attack loop (gain 2.5/s) and this pitch-rate loop (8/s) give a
+      // short-period response of about 4.5 rad/s with a damping ratio near 0.9: a pull and release
+      // settles back to 1 g with almost no overshoot, as on the real jet.
+      const qdD = clamp(10 * (qCmd - q), -3, 3), pdD = clamp(10 * (pCmd - p), -12, 12), rdD = clamp(5 * (rCmd - r), -2, 2);
       const mReq = (qdD - C5 * p * r + C6 * (p * p - r * r)) / C7 + heng * r;
       const A = pdD - (C1 * r + C2 * p) * q, B = rdD - (C8 * p - C2 * r) * q;
       const lReq = (C9 * A - C4 * B) / (C3 * C9 - C4 * C4);
