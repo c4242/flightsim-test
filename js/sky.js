@@ -135,7 +135,7 @@ export function createSky(scene, renderer) {
   const deckTop = new THREE.Mesh(new THREE.PlaneGeometry(90000, 90000).rotateX(-Math.PI / 2), deckMat(0xffffff));
   deckBottom.visible = deckTop.visible = false;
   scene.add(deckBottom, deckTop);
-  const LAYERS = { overcast: [450, 1050], low: [200, 900] };
+  const LAYERS = { overcast: [450, 1050], low: [200, 900], rain: [340, 2100] };
   let cloudMode = 'scattered';
   // Base (clear-sky) values for the current time of day, blended per frame.
   const base = { horizon: new THREE.Color(), zenith: new THREE.Color(), sun: new THREE.Color(), sunI: 1, hemiI: 1, fog: [3000, 38000], hemiSky: new THREE.Color() };
@@ -181,6 +181,7 @@ export function createSky(scene, renderer) {
       envHaze = -1;
     },
     get cloudMode() { return cloudMode; },
+    get raining() { return cloudMode === 'rain'; },
     // 0 = clear sky around the camera, 1 = under overcast / in cloud / in fog.
     get haze() { return domeMat.uniforms.haze.value; },
     update(camera, focus) {
@@ -202,7 +203,8 @@ export function createSky(scene, renderer) {
         inside = smooth(b - 30, b + 30, h) * (1 - smooth(t - 30, t + 30, h));
         fogNear = 300 * below; fogFar = 6000 + (layer === LAYERS.low ? 0 : 3000);
         if (h > t) { fogNear = base.fog[0]; fogFar = base.fog[1]; }
-        deckBottom.material.color.copy(grey).multiplyScalar(0.85);
+        deckBottom.material.color.copy(grey).multiplyScalar(cloudMode === 'rain' ? 0.6 : 0.85);
+        if (cloudMode === 'rain') { grey.multiplyScalar(0.72); fogFar = Math.min(fogFar, below > 0.5 ? 5000 : fogFar); }
         deckTop.material.color.copy(base.sun).multiplyScalar(env.night ? 0.35 : 1);
       } else if (cloudMode === 'fog') {
         const clear = smooth(60, 450, h);

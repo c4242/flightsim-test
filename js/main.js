@@ -9,7 +9,7 @@ import { SKYLARK } from './planes/skylark.js';
 import { F16 } from './planes/f16.js';
 import { initInput, initTouch, updateControls, consumePresses, getLook, KEYMAP, setInputOptions } from './input.js';
 import { createHud } from './hud.js';
-import { startAudio, updateAudio, toggleMute, setPaused, playThump, playCrash, playChime, setVolume, playBoom } from './audio.js';
+import { startAudio, updateAudio, toggleMute, setPaused, playThump, playCrash, playChime, setVolume, playBoom, setRain } from './audio.js';
 import { ilsGuidance } from './nav.js';
 import { Tanker } from './tanker.js';
 import { Weather, WIND_LEVELS } from './weather.js';
@@ -25,6 +25,7 @@ import { clamp } from './noise.js';
 import { createPost } from './post.js';
 import { createFlare } from './flare.js';
 import { Contrails } from './trails.js';
+import { Rain } from './rain.js';
 
 const settings = loadSettings();
 const low = settings.quality === 'low';
@@ -98,6 +99,7 @@ const traffic = new Traffic(scene);
 const missions = new MissionRunner();
 const tanker = new Tanker(scene);
 const contrails = new Contrails(scene);
+const rain = new Rain(scene);
 const NOZZLE = [new THREE.Vector3(0, -0.05, 5.6)];
 const contrailColor = new THREE.Color();
 missions.ctx = { tanker };
@@ -252,7 +254,7 @@ fillSelect('setTime', TIMES_OF_DAY, settings.timeOfDay).addEventListener('change
   settings.timeOfDay = e.target.value; saveSettings(settings);
   if (!missions.mission?.time) applyTime(settings.timeOfDay);
 });
-const CLOUD_LABELS = { clear: 'Clear', scattered: 'Scattered', overcast: 'Overcast (1,500 ft)', fog: 'Fog' };
+const CLOUD_LABELS = { clear: 'Clear', scattered: 'Scattered', overcast: 'Overcast (1,500 ft)', rain: 'Rain (overcast, 1,100 ft)', fog: 'Fog' };
 fillSelect('setClouds', Object.keys(CLOUD_LABELS), settings.clouds, (v) => CLOUD_LABELS[v]).addEventListener('change', (e) => {
   settings.clouds = e.target.value; saveSettings(settings);
   if (!missions.mission?.clouds) sky.setClouds(settings.clouds);
@@ -582,6 +584,22 @@ function updateHeatShimmer(dt) {
   post.setHeat(toPx(_hA), toPx(_hB), Math.max(10, 1.3 * pxPerM), strength, dt);
 }
 
+// ---------- Rain ----------
+// Heaviest below the cloud base, lighter inside the cloud, none above it.
+function updateRain(dt) {
+  const raining = sky.raining;
+  weather.rain = raining;
+  const h = camera.position.y;
+  const amount = raining ? (h < 340 ? 1 : h < 2100 ? 0.5 : 0) : 0;
+  const ground = Math.max(0, terrainHeight(camera.position.x, camera.position.z));
+  const light = sky.env.night ? 0.25 : 1;
+  rain.update(dt, camera, subject.vel ?? aircraft.vel, weather.surfaceWind, amount, ground, light);
+  // Drops on the windscreen in the cockpit view; the airflow sweeps them away at speed.
+  const onGlass = cameraMode === 'cockpit' && !replaying ? amount * 0.55 : 0;
+  post.setRainGlass(onGlass, Math.min(1, (subject.speed ?? 0) / 75), dt);
+  setRain(amount);
+}
+
 // ---------- Main loop ----------
 const STEP = 1 / 240;
 let acc = 0;
@@ -652,7 +670,7 @@ function frame(now) {
   model.update(subject, paused && !replaying ? 0 : dt);
   updateCamera(paused && !replaying ? 0 : dt);
   sky.update(camera, subject.pos);
-  world.update(clock, camera, weather.surfaceWind);
+  world.update(clock, camera, weather.surfaceWind, sky.env.night || sky.haze > 0.3 || sky.cloudMode === "low" || sky.cloudMode === "rain");
   if (cameraMode === 'cockpit' && !replaying) {
     panelTimer -= dt;
     if (panelTimer <= 0) {
@@ -667,6 +685,7 @@ function frame(now) {
   }
   updateAudio(replaying ? { ...aircraft, crashed: true } : aircraft);
   updateHeatShimmer(dt);
+  updateRain(paused && !replaying ? 0 : dt);
   post.render();
   flare.draw(camera, sky.env.sunDir, { haze: sky.haze, night: sky.env.night, dt });
   hud.draw(aircraft, camera, cameraMode, paused && !replaying ? 0 : dt, {

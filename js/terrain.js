@@ -529,7 +529,20 @@ function makeLight(color, size = 1.5) {
   return s;
 }
 
-function buildAirfield(renderer, f, lights, papis, windsocks, nightLights) {
+const floods = [];
+const floodMat = (() => {
+  if (typeof document === 'undefined') return null;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,214,150,0.9)'); gr.addColorStop(0.5, 'rgba(255,200,130,0.35)'); gr.addColorStop(1, 'rgba(255,190,120,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+})();
+
+function buildAirfield(renderer, f, lights, papis, windsocks, nightLights, AL) {
   const group = new THREE.Group();
   group.position.set(f.x, 0, f.z);
   group.rotation.y = -f.heading;
@@ -557,6 +570,21 @@ function buildAirfield(renderer, f, lights, papis, windsocks, nightLights) {
   const apronZ = f.id === 'main' ? 150 : 0;
   flat(apronX - f.width / 2 - 25, 15, (f.width / 2 + apronX - 30) / 2, apronZ);
   flat(60, f.id === 'main' ? 140 : 70, apronX, apronZ);
+  // Blue taxiway and apron edge lights.
+  const apronLen = f.id === 'main' ? 140 : 70;
+  const blue = (x, z) => { const w = fieldToWorld(f, -z, x, E + 0.35); AL.push([w.x, w.y, w.z, 0.25, 0.45, 1.0, 0.8, 0, 0]); };
+  for (let x = f.width / 2 + 6; x < apronX - 30; x += 12) { blue(x, apronZ - 8); blue(x, apronZ + 8); }
+  for (let z = -apronLen / 2; z <= apronLen / 2; z += 14) { blue(apronX - 31, z); blue(apronX + 31, z); }
+  // Apron floodlights: warm pools of light on the tarmac at night.
+  for (let z = -apronLen / 2 + 20; z <= apronLen / 2 - 10; z += 45) {
+    const fl = new THREE.Mesh(new THREE.CircleGeometry(26, 32).rotateX(-Math.PI / 2), floodMat);
+    fl.position.set(apronX + 12, E + 0.05, z);
+    fl.renderOrder = 2;
+    group.add(fl);
+    floods.push(fl);
+    const lamp = fieldToWorld(f, -z, apronX + 34, E + 14);
+    AL.push([lamp.x, lamp.y, lamp.z, 1.0, 0.85, 0.6, 1.6, 0, 0]);
+  }
 
   // Edge lights every 60 m.
   const lightGeo = new THREE.BoxGeometry(0.3, 0.4, 0.3);
@@ -571,12 +599,38 @@ function buildAirfield(renderer, f, lights, papis, windsocks, nightLights) {
       m.makeTranslation(s * (f.width / 2 + 2), E + 0.2, z);
       edge.setMatrixAt(n++, m);
       const wp = fieldToWorld(f, -z, s * (f.width / 2 + 2), E + 0.5);
-      // Threshold ends show green/red, the rest white.
-      const endLight = k === 0 || k === count - 1;
-      nightLights.push([wp.x, wp.y, wp.z, endLight ? 0.3 : 1, endLight ? 1 : 0.95, endLight ? 0.4 : 0.8]);
+      // Edge lights: white, turning yellow over the last 600 m in each direction (shown as amber-white).
+      AL.push([wp.x, wp.y, wp.z, 1.0, 0.92, 0.75, 1.0, 0, 0]);
     }
   }
   group.add(edge);
+
+  // Threshold (green, facing landing aircraft) and runway end (red) bars.
+  for (const end of [1, -1]) {
+    for (let x = -f.width / 2; x <= f.width / 2 + 0.01; x += f.width / 8) {
+      const g = fieldToWorld(f, -end * (f.length / 2 + 1), x, E + 0.4);
+      AL.push([g.x, g.y, g.z, 0.25, 1.0, 0.35, 1.3, 0, 0]);
+    }
+  }
+  // Centreline lights every 15 m: white, alternating red/white from 900 m to go, red for the last 300 m
+  // (as seen landing on 36; the pattern is symmetric so the other direction sees the same thing mirrored).
+  for (let a = -f.length / 2 + 15; a < f.length / 2 - 7; a += 15) {
+    const toGo = f.length / 2 - a;
+    const red = toGo < 300 || (toGo < 900 && Math.round(a / 15) % 2 === 0);
+    const c = fieldToWorld(f, a, 0, E + 0.15);
+    AL.push([c.x, c.y, c.z, red ? 1.0 : 0.95, red ? 0.25 : 0.95, red ? 0.15 : 0.9, 0.7, 0, 0]);
+  }
+  // Touchdown-zone lights: bars either side of the centreline over the first 900 m from each end.
+  if (f.approachLights) {
+    for (const end of [1, -1]) {
+      for (let d = 60; d <= 900; d += 60) {
+        for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
+          const t = fieldToWorld(f, -end * (f.length / 2 - d), side * (5 + i * 1.5), E + 0.15);
+          AL.push([t.x, t.y, t.z, 1.0, 0.95, 0.85, 0.6, 0, 0]);
+        }
+      }
+    }
+  }
 
   // Approach lights (rows of white lights before each threshold).
   if (f.approachLights) {
@@ -590,6 +644,9 @@ function buildAirfield(renderer, f, lights, papis, windsocks, nightLights) {
           group.add(l);
           lights.push(l);
         }
+        // Sequenced flasher ("rabbit") on the centreline: runs towards the threshold twice a second.
+        const sp = fieldToWorld(f, -end * (f.length / 2 + r * 30), 0, terrainHeightLocal(f, end * (f.length / 2 + r * 30), 0) + 1.2);
+        AL.push([sp.x, sp.y, sp.z, 1.0, 1.0, 1.0, 2.2, 1, (10 - r) / 10]);
       }
     }
   }
@@ -599,6 +656,7 @@ function buildAirfield(renderer, f, lights, papis, windsocks, nightLights) {
     const units = [];
     for (let k = 0; k < 4; k++) {
       const l = makeLight(0xffffff, 1.4);
+      l.userData.grow = 0.0045; // PAPI must stay readable from several miles out
       const zz = end * (f.length / 2 - f.papiDist);
       // Left of the runway as seen by the landing pilot; k = 0 is the outermost unit.
       const xx = -end * (f.width / 2 + 15 + (3 - k) * 9);
@@ -767,6 +825,66 @@ function buildVillages(nightLights) {
   return g;
 }
 
+// Airport lights as one draw call: each light is a glowing point with a minimum on-screen size,
+// so it's visible from many kilometres away, and HDR brightness so it blooms. Mode 1 lights are
+// strobes that flash in sequence (the approach "rabbit").
+function buildAirportLights(list) {
+  const n = list.length;
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), extra = new Float32Array(n * 3);
+  list.forEach((l, i) => { pos.set(l.slice(0, 3), i * 3); col.set(l.slice(3, 6), i * 3); extra.set(l.slice(6, 9), i * 3); });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('aExtra', new THREE.BufferAttribute(extra, 3)); // size, mode, phase
+  const uniforms = { uTime: { value: 0 }, uScale: { value: 500 }, uNight: { value: 1 } };
+  const mat = new THREE.ShaderMaterial({
+    uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: /* glsl */`
+      uniform float uTime, uScale, uNight;
+      attribute vec3 aColor, aExtra;
+      varying vec3 vCol;
+      varying float vA;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        float d = -mv.z;
+        float on = 1.0;
+        if (aExtra.y > 0.5) {
+          // Strobe: a 60 ms flash, sweeping along the row twice a second.
+          float ph = fract(uTime * 2.0 - aExtra.z * 0.5);
+          on = smoothstep(0.0, 0.01, ph) * (1.0 - smoothstep(0.03, 0.06, ph)) * 3.0;
+        }
+        // Light physically ~0.3 m wide, never smaller than ~3 px; brightness falls off slowly with range.
+        gl_PointSize = max(aExtra.x * 0.6 * uScale / d, (2.0 + aExtra.x * 0.8) * (aExtra.y > 0.5 ? 1.6 : 1.0));
+        vA = on * mix(0.55, 1.0, uNight) * clamp(5000.0 / d, 0.25, 1.0);
+        vCol = aColor;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`
+      varying vec3 vCol;
+      varying float vA;
+      void main() {
+        vec2 c = gl_PointCoord - 0.5;
+        float r = dot(c, c) * 4.0;
+        if (r > 1.0) discard;
+        float core = exp(-r * 9.0), halo = exp(-r * 2.5) * 0.35;
+        // HDR: the core is brighter than white so the bloom pass gives it a glow.
+        gl_FragColor = vec4(vCol * (core * 1.7 + halo * 0.6) * vA, 1.0);
+      }`,
+  });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  points.visible = false;
+  return {
+    points,
+    update(t, camera, on, night) {
+      points.visible = on;
+      uniforms.uTime.value = t;
+      uniforms.uNight.value = night ? 1 : 0;
+      uniforms.uScale.value = innerHeight / (2 * Math.tan(camera.fov * Math.PI / 360));
+    },
+  };
+}
+
 function buildTrees(maxTrees) {
   const trunkGeo = new THREE.CylinderGeometry(0.25, 0.35, 3, 5).translate(0, 1.5, 0);
   const crownGeo = new THREE.ConeGeometry(2.6, 8, 7).translate(0, 6.5, 0);
@@ -831,7 +949,10 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
   const sea = buildSea(env);
   scene.add(sea.mesh);
   const lights = [], papis = [], windsocks = [], nightLights = [];
-  for (const f of AIRFIELDS) scene.add(buildAirfield(renderer, f, lights, papis, windsocks, nightLights));
+  const AL = [];
+  for (const f of AIRFIELDS) scene.add(buildAirfield(renderer, f, lights, papis, windsocks, nightLights, AL));
+  const airportLights = buildAirportLights(AL);
+  scene.add(airportLights.points);
   scene.add(buildVillages(nightLights));
   scene.add(buildTrees(quality === 'low' ? 3500 : 10000));
 
@@ -850,14 +971,17 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
 
   const _v = new THREE.Vector3();
   return {
-    update(t, camera, wind) {
+    // lightsOn: night or poor visibility (airports switch their lights on in cloud, rain and fog).
+    update(t, camera, wind, lightsOn = env.night) {
       sea.update(t);
       nightPoints.visible = env.night;
+      airportLights.update(t, camera, lightsOn, env.night);
+      for (const fl of floods) fl.visible = env.night;
       // Keep point lights a visible size at any distance.
       for (const l of lights) {
         l.getWorldPosition(_v);
         const d = _v.distanceTo(camera.position);
-        const k = Math.max(l.userData.size, d * 0.0045);
+        const k = Math.max(l.userData.size, d * (l.userData.grow ?? 0.0012));
         l.scale.set(k, k, 1);
       }
       for (const p of papis) {

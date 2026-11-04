@@ -215,7 +215,8 @@ export class Aircraft {
       const sx = -wf.z, sz = wf.x;               // sideways direction
       const vl = pv.x * wf.x + pv.z * wf.z;      // rolling speed
       const vs = pv.x * sx + pv.z * sz;          // skid speed
-      const mu = rollMu + (gear.brake ? Math.max(c.brake, this.parkBrake ? 1 : 0) * T.brakeMu : 0);
+      // A wet runway roughly halves the braking friction.
+      const mu = rollMu + (gear.brake ? Math.max(c.brake, this.parkBrake ? 1 : 0) * T.brakeMu * (weather?.rain ? 0.55 : 1) : 0);
       const roll = -clamp(vl / 0.3, -1, 1) * mu * normal;
       const side = -clamp(vs / 0.2, -1, 1) * 0.9 * normal;
       const f = _v.set(wf.x * roll + sx * side, normal, wf.z * roll + sz * side);

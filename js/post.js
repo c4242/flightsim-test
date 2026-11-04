@@ -60,11 +60,60 @@ const HeatShader = {
     }`,
 };
 
+// Rain on the windscreen: two layers of procedural drops that refract the view behind them.
+// Slow: drops sit and trickle down. Fast: the airflow streaks them up and back over the canopy.
+const RainGlassShader = {
+  uniforms: {
+    tDiffuse: { value: null }, uTime: { value: 0 }, uAmount: { value: 0 }, uSpeed: { value: 0 }, uAspect: { value: 1 },
+  },
+  vertexShader: VignetteShader.vertexShader,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float uTime, uAmount, uSpeed, uAspect;
+    varying vec2 vUv;
+    float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    vec2 h2(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
+    // Returns (offset.xy, mask) for one layer of drops.
+    vec3 layer(vec2 uv, float scale, float seed) {
+      float v = uSpeed;
+      vec2 flow = mix(vec2(0.0, -0.08), vec2(0.0, 3.0), v);     // in cells per second
+      float stretch = 1.0 + 4.0 * v;
+      vec2 p = uv * vec2(uAspect, 1.0) * scale;
+      // Each column slides at its own rate.
+      float col = floor(p.x);
+      p.y -= uTime * flow.y * (0.6 + 0.8 * h1(vec2(col, seed)));
+      vec2 id = floor(p), f = fract(p) - 0.5;
+      float r = h1(id + seed);
+      if (r > uAmount) return vec3(0.0);
+      vec2 c = (h2(id + seed) - 0.5) * 0.5;
+      float rad = 0.10 + 0.14 * h1(id + seed + 7.0);
+      vec2 d = (f - c) * vec2(1.0, 1.0 / stretch);
+      float m = smoothstep(rad, rad * 0.65, length(d));
+      // A thinner trail left behind the moving drop.
+      vec2 dt = f - c; dt.y -= 0.25;
+      float trail = smoothstep(rad * 0.35, 0.0, abs(dt.x)) * smoothstep(0.5, 0.0, dt.y) * step(0.0, dt.y) * (0.3 + 0.5 * v);
+      return vec3(d / rad, max(m, trail * 0.5));
+    }
+    void main() {
+      vec3 a = layer(vUv, 9.0, 0.0), b = layer(vUv, 17.0, 31.7);
+      vec2 off = (a.xy * a.z * 0.035 + b.xy * b.z * 0.02) * smoothstep(0.38, 0.46, vUv.y);
+      // Only on the windscreen, not over the instrument panel below it.
+      float mask = max(a.z, b.z) * smoothstep(0.38, 0.46, vUv.y);
+      // Drops act as small lenses: refract (sample flipped and shifted) and darken a little at the rim.
+      vec4 col = texture2D(tDiffuse, vUv - off);
+      vec4 base = texture2D(tDiffuse, vUv);
+      col.rgb *= 1.0 - 0.18 * mask * smoothstep(0.3, 1.0, length(a.xy * a.z + b.xy * b.z));
+      // Highlight from the bright sky above.
+      col.rgb += 0.07 * mask * smoothstep(0.2, -0.6, a.y + b.y);
+      gl_FragColor = mix(base, col, clamp(mask, 0.0, 1.0));
+    }`,
+};
+
 export function createPost(renderer, scene, camera, { enabled = true } = {}) {
   if (!enabled) {
     return {
       render: () => renderer.render(scene, camera),
-      setSize() {}, setPixelRatio() {}, setHeat() {}, enabled: false,
+      setSize() {}, setPixelRatio() {}, setHeat() {}, setRainGlass() {}, enabled: false,
     };
   }
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -75,6 +124,9 @@ export function createPost(renderer, scene, camera, { enabled = true } = {}) {
   composer.addPass(new RenderPass(scene, camera));
   const heat = new ShaderPass(HeatShader);
   composer.addPass(heat);
+  const rainGlass = new ShaderPass(RainGlassShader);
+  rainGlass.enabled = false;
+  composer.addPass(rainGlass);
   // strength, radius, threshold (in linear HDR units: only things brighter than white bloom).
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.6, 0.45, 1.5);
   composer.addPass(bloom);
@@ -85,6 +137,15 @@ export function createPost(renderer, scene, camera, { enabled = true } = {}) {
     bloom, heat,
     render: () => composer.render(),
     setSize(w, h) { composer.setSize(w, h); },
+    // amount 0..1 (fraction of cells holding a drop), speed 0..1 (airflow over the windscreen).
+    setRainGlass(amount, speed, dt) {
+      const u = rainGlass.uniforms;
+      u.uTime.value += dt;
+      u.uAmount.value = amount;
+      u.uSpeed.value += (speed - u.uSpeed.value) * Math.min(1, dt * 2);
+      u.uAspect.value = innerWidth / innerHeight;
+      rainGlass.enabled = amount > 0.01;
+    },
     // a, b: nozzle and plume end in CSS pixels (y down); width in pixels; strength 0..1.
     setHeat(a, b, width, strength, dt) {
       const u = heat.uniforms, r = renderer.getPixelRatio();

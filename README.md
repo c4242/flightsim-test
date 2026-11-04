@@ -244,6 +244,21 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 - **Cumulus clouds:** each puff is lit like a soft sphere, with sunlit tops, grey bases, light through the
   edges and a glow when you look towards the sun.
 - **Heat shimmer:** the air behind the F-16's nozzle ripples, more strongly in afterburner.
+- **Airport lighting:**
+  - Runway edge lights, the green threshold bar and the red end bar.
+  - Centreline lights that turn red/white and then red near the end of the runway.
+  - Touchdown-zone lights.
+  - Sequenced flashing approach strobes (the "rabbit") running towards the threshold.
+  - Blue taxiway lights, and apron floodlights casting warm pools on the tarmac.
+  - The lights glow through the bloom and come on at night, in cloud and in rain.
+- **Rain** (Settings → Clouds → Rain):
+  - A dark overcast with its base at about 1,100 ft.
+  - Rain streaks that slant and stretch with your speed.
+  - Drops on the windscreen in the cockpit view that bend the view behind them. They trickle down
+    when you're slow and the airflow streaks them back at speed.
+  - The sound of rain.
+  - A wet runway: braking friction drops by about half, so the F-16 needs about 1,260 m instead of
+    770 m to stop from 136 kt.
 - **Altitude:** the sky deepens to a dark blue and the haze clears as you climb.
 
 - Image-based lighting: the sky is rendered into an environment map, so paint, metal and glass reflect
@@ -278,6 +293,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/post.js` | HDR rendering with bloom, tone mapping and vignette. |
 | `js/flare.js` | Sun lens flare with terrain and cloud occlusion. |
 | `js/trails.js` | High-altitude contrails. |
+| `js/rain.js` | Falling rain streaks around the camera. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |
 | `js/autopilot.js` | Heading and altitude hold with coordinated turns and stall protection. |
 | `js/terrain.js` | The island heightfield, terrain colours plus a multi-scale detail shader, the water shader (waves, Fresnel sky reflection, sun glint, shallow-water colour, shoreline foam), both airfields (runway markings drawn on a canvas, PAPI, approach and edge lights, hangars, tower, windsocks), villages of instanced houses with lit windows and street lights at night, and instanced trees. Trees and buildings are also registered for collision. |

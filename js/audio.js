@@ -5,6 +5,7 @@ let master, engineA, engineB, engineFilter, engineGain, windGain, windFilter, ho
 let muted = false;
 let volume = 0.5;
 let warnGain;
+let rainGain, rainLevel = 0;
 let jetWhine, jetWhineGain, jetWhineFilter, jetRoarGain, jetRoarFilter, abGain, gcasGain, gcasOsc;
 
 function noiseBuffer(seconds = 2) {
@@ -76,6 +77,16 @@ export function startAudio() {
   warn.connect(warnGain).connect(master);
   warn.start(); lfo.start();
   buildJet();
+  // Rain: high-passed noise (patter) plus a low rumble on the airframe.
+  const rainFilter = ctx.createBiquadFilter(); rainFilter.type = 'highpass'; rainFilter.frequency.value = 1800;
+  rainGain = ctx.createGain(); rainGain.gain.value = 0;
+  loopNoise().connect(rainFilter).connect(rainGain).connect(master);
+}
+
+export function setRain(level) {
+  if (!ctx || Math.abs(level - rainLevel) < 0.01) return;
+  rainLevel = level;
+  rainGain.gain.setTargetAtTime(level * 0.12, ctx.currentTime, 0.5);
 }
 
 function buildJet() {
