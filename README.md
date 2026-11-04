@@ -30,6 +30,28 @@ A 1,100 kg, 180 hp low-wing trainer in the class of a Piper Cherokee or Cessna 1
 conventional controls (the stick moves the control surfaces directly), flaps, trim and fixed landing
 gear. It stalls at about 50 kt and cruises at about 100–120 kt.
 
+- **Aerodynamics:** the stability and control derivatives of the Cessna 172 (Roskam), and real
+  moments of inertia. Each wing is computed separately at its own angle of attack and airspeed, so
+  roll damping and roll from yaw come out of the physics.
+- **Stalls:** the stall warning sounds a couple of knots before the break:
+  - Clean: break at about 50 kt.
+  - Full flaps: break at about 45 kt.
+  
+  One wing tends to drop at the break, and you pick it up with rudder, not aileron, which deepens the
+  stall on the low wing.
+- **Spins:** full aft stick and full rudder at the stall give a developed spin: about 35° AoA, 2–3 s
+  per turn, losing about 8,000 ft/min. Recover with opposite rudder and the stick forward; it stops
+  within about half a turn.
+- **Propeller:**
+  - Engine torque rolls the aircraft left.
+  - Slipstream swirl and P-factor yaw it left at high power and low speed, so it swings left on the
+    takeoff roll unless you hold right rudder.
+  - The propeller precesses gyroscopically when you pitch or yaw.
+  - Propwash over the tail keeps the elevator and rudder working at low speed.
+  - The fin and tabs are rigged to cancel these effects at cruise power, so it flies straight hands-off in cruise.
+- **Adverse yaw:** a roll with aileron alone yaws the nose the other way; coordinate with rudder.
+- **Performance:** glide ratio about 9.7 (engine off); top speed about 138 kt.
+
 ### F-16C Fighting Falcon (Block 50, F110-GE-129)
 The F-16 is modelled as realistically as a browser game allows:
 
@@ -360,7 +382,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/aircraft.js` | Shared six-degree-of-freedom rigid-body flight model (position and attitude driven by forces and moments through the inertia); the aircraft types supply the aerodynamics, engine and control laws. It covers: a rigid body with lift (with stall), drag (parasitic + induced, reduced in ground effect), side force, propeller thrust and slipstream, air density with altitude, control moments, static stability, damping, adverse yaw, wind-relative aerodynamics, and spring-damper landing gear with brakes, nose-wheel steering and grass vs asphalt friction. Also crash and structural-limit detection and landing scoring. Runs at 240 Hz in fixed steps. |
 | `js/planes/f16aero.js` | The F-16 aerodynamic database (NASA TP-1538 / Stevens & Lewis tables) and coefficient build-up. |
 | `js/planes/f16.js` | The F-16: mass and inertia, Mach-dependent aerodynamics, the F110 engine model with spool-up, afterburner and fuel, and the fly-by-wire control laws. |
-| `js/planes/skylark.js` | The light trainer's aerodynamics, propeller engine and direct control surfaces. |
+| `js/planes/skylark.js` | The light trainer: Cessna 172 derivatives, per-wing stall and spin model, propeller effects (torque, swirl, P-factor, gyroscopics, propwash) and direct control surfaces. |
 | `js/atmosphere.js` | International Standard Atmosphere, Mach number and calibrated airspeed. |
 | `js/acloader.js` | Loader for AC3D (`.ac`) models, the format FlightGear uses, keeping named parts for animation. |
 | `js/fgmodel.js` | Loader for FlightGear model XML: sub-models with offsets, conditions, and rotate/translate/select/textranslate/spin animations. |
