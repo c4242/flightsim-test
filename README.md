@@ -244,6 +244,14 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
   houses, so the ground you see is the ground you touch. The GPU copy of the function matches the
   JavaScript one bit for bit (same integer hash), and the detail fades out at the patch edge to meet the
   coarse mesh.
+- **Roads:** a road network links the villages and both airfields. Each road is routed across the
+  terrain (A* on the height grid: steep slopes cost more, water and runways are off limits), smoothed,
+  and laid on the ground with a dashed centre line. Streetlights near the villages come on at night.
+- **Churches:** each village has a church with a tower and slate spire on its square, floodlit at
+  night. Churches are solid.
+- **Birds:** flocks circle over the coast, the fields and the valleys by day, flapping and gliding.
+  Hitting one is a bird strike: a thump and a puff of feathers. In the F-16 there's a 15% chance the
+  bird is ingested and the engine fails.
 - **Farmland:** flat lowland is covered with a patchwork of parcels (ripe wheat, young cereal, ploughed
   soil, pasture, stubble, maize) laid out at a different angle on each farm. Up close you see crop rows,
   and dark hedgerows run between the parcels.
@@ -307,6 +315,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/flare.js` | Sun lens flare with terrain and cloud occlusion. |
 | `js/trails.js` | High-altitude contrails. |
 | `js/terrain-detail.js` | The detailed terrain patch around the camera, with its heights computed on the GPU. |
+| `js/birds.js` | Flocks of birds and bird strikes. |
 | `js/rain.js` | Falling rain streaks around the camera. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |
 | `js/autopilot.js` | Heading and altitude hold with coordinated turns and stall protection. |

@@ -26,6 +26,7 @@ import { createPost } from './post.js';
 import { createFlare } from './flare.js';
 import { Contrails } from './trails.js';
 import { Rain } from './rain.js';
+import { Birds } from './birds.js';
 
 const settings = loadSettings();
 const low = settings.quality === 'low';
@@ -100,6 +101,7 @@ const missions = new MissionRunner();
 const tanker = new Tanker(scene);
 const contrails = new Contrails(scene);
 const rain = new Rain(scene);
+const birds = new Birds(scene);
 const NOZZLE = [new THREE.Vector3(0, -0.05, 5.6)];
 const contrailColor = new THREE.Color();
 missions.ctx = { tanker };
@@ -640,6 +642,7 @@ function frame(now) {
     subject = recorder.sample(dt);
     traffic.update(dt);
     tanker.update(dt, null);
+    birds.update(dt, null, sky.env.night);
     effects.update(dt);
   } else if (!paused) {
     clock += dt;
@@ -658,6 +661,20 @@ function frame(now) {
     updatePilot(dt);
     if (!aircraft.crashed && aircraft.pos.distanceTo(traffic.pos) < (kind() === 'jet' ? 9 : 7)) aircraft.crash('Mid-air collision with other traffic');
     tanker.update(dt, aircraft);
+    const strike = birds.update(dt, aircraft, sky.env.night);
+    if (strike) {
+      playThump(0.8);
+      shake += 0.01;
+      for (let i = 0; i < 14; i++) {
+        effects.emit(strike.pos, new THREE.Vector3((Math.random() - 0.5) * 6, (Math.random() - 0.2) * 4, (Math.random() - 0.5) * 6).addScaledVector(aircraft.vel, 0.3),
+          { color: Math.random() < 0.6 ? 0xeeeeee : 0x777777, life: 1.5 + Math.random(), size0: 0.3, size1: 1.2, alpha: 0.8, drag: 3 });
+      }
+      // A jet engine can surge and flame out after ingesting a bird.
+      if (kind() === 'jet' && !aircraft.engineFailed && Math.random() < 0.15) {
+        aircraft.engineFailed = true;
+        hud.message('BIRD STRIKE: bird ingested, engine failure!', '#ff6a4d', 5);
+      } else hud.message('Bird strike!', '#fc6', 3);
+    }
     for (const e of tanker.events) {
       if (e.type === 'contact') { playChime([660, 990], 0.12); hud.message('Contact: taking on fuel', '#3dff6e', 2.5); }
       if (e.type === 'disconnect') { playChime([700, 500], 0.12); hud.message(`Disconnect (${e.reason === 'limits' ? 'out of limits' : 'closure rate'})`, '#fc6', 2.5); }
@@ -727,4 +744,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

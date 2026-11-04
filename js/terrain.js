@@ -270,8 +270,8 @@ export function obstacleAt(p) {
   for (let a = -1; a <= 1; a++) {
     for (let b = -1; b <= 1; b++) {
       const list = treeGrid.get(_key(ix + a, iz + b));
-      if (!list) continue;
-      for (const t of list) {
+      // (Boxes are checked even in cells without trees: villages have no trees.)
+      if (list) for (const t of list) {
         const up = p.y - t.y;
         if (up < 0 || up > t.height) continue;
         const r = up < t.height * 0.3 ? 0.5 : t.radius * (1 - (up - t.height * 0.3) / (t.height * 0.7));
@@ -863,6 +863,161 @@ function nearAirfield(x, z, pad = 0) {
   return false;
 }
 
+// ---------- Roads ----------
+// A road network linking the villages and the airfields: a minimum spanning tree over them (plus
+// a couple of extra links), each road routed with A* across the terrain grid. Steep ground costs
+// more, water is impassable. Paths are smoothed and draped on the terrain as asphalt ribbons.
+function roadNodes() {
+  const nodes = VILLAGES.map((v) => ({ x: v.x, z: v.z, village: v }));
+  for (const f of AIRFIELDS) {
+    const p = fieldToWorld(f, f.id === 'main' ? -150 : 0, f.width / 2 + (f.id === 'main' ? 240 : 160));
+    nodes.push({ x: p.x, z: p.z, field: f });
+  }
+  return nodes;
+}
+
+let blocked = null;
+function routeRoad(a, b) {
+  const toCell = (x, z) => [Math.round((x + HALF) / CELL), Math.round((z + HALF) / CELL)];
+  const [sj, si] = toCell(a.x, a.z), [tj, ti] = toCell(b.x, b.z);
+  const N = VERTS * VERTS;
+  const g = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
+  const open = [];   // binary heap of [f, idx]
+  const push = (f, i) => { open.push([f, i]); let k = open.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (open[p][0] <= open[k][0]) break; [open[p], open[k]] = [open[k], open[p]]; k = p; } };
+  const pop = () => { const top = open[0], last = open.pop(); if (open.length) { open[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < open.length && open[l][0] < open[m][0]) m = l; if (r < open.length && open[r][0] < open[m][0]) m = r; if (m === k) break; [open[m], open[k]] = [open[k], open[m]]; k = m; } } return top; };
+  const start = si * VERTS + sj, goal = ti * VERTS + tj;
+  if (!blocked) {
+    // Runways (with their ends and safety areas) are off limits for roads.
+    blocked = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      const x = -HALF + (i % VERTS) * CELL, z = -HALF + Math.floor(i / VERTS) * CELL;
+      for (const f of AIRFIELDS) {
+        const { along, across } = fieldLocal(f, x, z);
+        if (Math.abs(across) < f.width / 2 + 70 && Math.abs(along) < f.length / 2 + 150) blocked[i] = 1;
+      }
+    }
+  }
+  const H = (i) => Math.hypot((i % VERTS) - tj, Math.floor(i / VERTS) - ti) * CELL;
+  g[start] = 0; push(H(start), start);
+  const nb = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  while (open.length) {
+    const [, cur] = pop();
+    if (cur === goal) break;
+    if (closed[cur]) continue;
+    closed[cur] = 1;
+    const cj = cur % VERTS, ci = (cur - cj) / VERTS;
+    const h0 = heights[cur];
+    for (const [dj, di] of nb) {
+      const nj = cj + dj, ni = ci + di;
+      if (nj < 0 || ni < 0 || nj >= VERTS || ni >= VERTS) continue;
+      const n = ni * VERTS + nj;
+      const h1 = heights[n];
+      if (h1 < 4) continue; // water and beach
+      if (blocked[n]) continue; // runways
+      const run = Math.hypot(dj, di) * CELL;
+      const grade = Math.abs(h1 - h0) / run;
+      if (grade > 0.22) continue;
+      const cost = run * (1 + 30 * grade * grade + (grade > 0.1 ? 4 : 0));
+      if (g[cur] + cost < g[n]) { g[n] = g[cur] + cost; from[n] = cur; push(g[n] + H(n), n); }
+    }
+  }
+  if (from[goal] < 0 && goal !== start) return null;
+  const path = [];
+  for (let i = goal; i >= 0; i = from[i]) path.push([-HALF + (i % VERTS) * CELL, -HALF + Math.floor(i / VERTS) * CELL]);
+  path.reverse();
+  path[0] = [a.x, a.z]; path[path.length - 1] = [b.x, b.z];
+  // Chaikin smoothing, then resample every 10 m.
+  let pts = path;
+  for (let k = 0; k < 3; k++) {
+    const out = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, z0] = pts[i], [x1, z1] = pts[i + 1];
+      out.push([x0 * 0.75 + x1 * 0.25, z0 * 0.75 + z1 * 0.25], [x0 * 0.25 + x1 * 0.75, z0 * 0.25 + z1 * 0.75]);
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  const res = [pts[0]];
+  let carry = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, z0] = pts[i], [x1, z1] = pts[i + 1];
+    const L = Math.hypot(x1 - x0, z1 - z0);
+    for (let d = 10 - carry; d < L; d += 10) res.push([x0 + (x1 - x0) * d / L, z0 + (z1 - z0) * d / L]);
+    carry = (carry + L) % 10;
+  }
+  res.push(pts[pts.length - 1]);
+  return res;
+}
+
+export const ROADS = [];
+function buildRoads(nightLights) {
+  const nodes = roadNodes();
+  // Minimum spanning tree (Prim), plus the shortest link not in it for a loop.
+  const inTree = new Set([0]), edges = [];
+  while (inTree.size < nodes.length) {
+    let best = null;
+    for (const i of inTree) for (let j = 0; j < nodes.length; j++) {
+      if (inTree.has(j)) continue;
+      const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z);
+      if (!best || d < best[2]) best = [i, j, d];
+    }
+    edges.push(best); inTree.add(best[1]);
+  }
+  let extra = null;
+  for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+    if (edges.some(([a, b]) => (a === i && b === j) || (a === j && b === i))) continue;
+    const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z);
+    if (!extra || d < extra[2]) extra = [i, j, d];
+  }
+  if (extra) edges.push(extra);
+
+  const W = 3.2; // half-width (m)
+  const pos = [], uv = [], idx = [];
+  for (const [i, j] of edges) {
+    const pts = routeRoad(nodes[i], nodes[j]);
+    if (!pts) continue;
+    ROADS.push(pts);
+    let along = 0;
+    const base = pos.length / 3;
+    for (let k = 0; k < pts.length; k++) {
+      const [x, z] = pts[k];
+      const [xa, za] = pts[Math.max(0, k - 1)], [xb, zb] = pts[Math.min(pts.length - 1, k + 1)];
+      let dx = xb - xa, dz = zb - za; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      if (k) along += Math.hypot(x - pts[k - 1][0], z - pts[k - 1][1]);
+      for (const side of [-1, 1]) {
+        const px = x - dz * W * side, pz = z + dx * W * side;
+        // Sit just above both the coarse mesh and the detailed patch.
+        pos.push(px, Math.max(terrainHeight(px, pz), coarseHeight(px, pz)) + 0.25, pz);
+        uv.push(side < 0 ? 0 : 1, along / 20);
+      }
+      if (k) { const a = base + (k - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      // Streetlights near the villages.
+      if (k % 9 === 0 && VILLAGES.some((v) => Math.hypot(x - v.x, z - v.z) < v.r + 500)) {
+        const lx = x - dz * (W + 2), lz = z + dx * (W + 2);
+        nightLights.push([lx, terrainHeight(lx, lz) + 7, lz, 1.0, 0.65, 0.32]);
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  // Asphalt with a dashed centre line and pale edges.
+  const cv = document.createElement('canvas'); cv.width = 32; cv.height = 64;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#4a4b4d'; g.fillRect(0, 0, 32, 64);
+  g.fillStyle = '#8d8a80'; g.fillRect(0, 0, 2, 64); g.fillRect(30, 0, 2, 64);
+  g.fillStyle = '#d8d4c4'; g.fillRect(15, 0, 2, 26);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const mat = applyTerrainShadow(new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 function buildVillages(nightLights) {
   let s = 777;
   const rnd = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
@@ -879,6 +1034,7 @@ function buildVillages(nightLights) {
       const lo = Math.min(...hs), hi = Math.max(...hs);
       if (lo < 3 || hi - lo > 2.5) continue;
       if (houses.some((h) => (h.x - x) ** 2 + (h.z - z) ** 2 < 15 * 15)) continue;
+      if ((x - v.x) ** 2 + (z - v.z) ** 2 < 32 * 32) continue; // keep the square around the church clear
       houses.push({ v, x, z, w, d: dpt, rot, lo, hi, wallH: 3.5 + rnd() * 2.5 * (rnd() < 0.2 ? 2 : 1) });
     }
   }
@@ -925,6 +1081,33 @@ function buildVillages(nightLights) {
   }
   const g = new THREE.Group();
   g.add(walls, roofs);
+  // A church on each village square: nave, west tower and a slate spire, visible from the air.
+  const stone = applyTerrainShadow(new THREE.MeshLambertMaterial({ color: 0xcfc6b2 }));
+  const slate = applyTerrainShadow(new THREE.MeshLambertMaterial({ color: 0x4e5560 }));
+  const tile = applyTerrainShadow(new THREE.MeshLambertMaterial({ color: 0x8a3b2e }));
+  for (const v of VILLAGES) {
+    const base = terrainHeight(v.x, v.z) - 0.5;
+    const rot = Math.atan2(v.x, v.z) * 0.3; // roughly east-west, varied a little
+    const church = new THREE.Group();
+    church.position.set(v.x, base, v.z);
+    church.rotation.y = rot;
+    const box = (w, h, d, x, y, z, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.castShadow = b.receiveShadow = true; church.add(b); };
+    box(9, 9, 20, 0, 4.5, 3, stone);                                  // nave
+    const roof = new THREE.Mesh(prismGeometry(), tile);
+    roof.scale.set(21, 4.5, 10); roof.rotation.y = Math.PI / 2; roof.position.set(0, 9, 3); roof.castShadow = true; church.add(roof);
+    box(5.5, 20, 5.5, 0, 10, -9.5, stone);                            // tower
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(3.7, 14, 4), slate);
+    spire.rotation.y = Math.PI / 4; spire.position.set(0, 27, -9.5); spire.castShadow = true; church.add(spire);
+    g.add(church);
+    // Obstacles: nave and tower/spire (approximate, in world space).
+    const c = Math.cos(rot), sn = Math.sin(rot);
+    const at = (lx, lz) => [v.x + lx * c + lz * sn, v.z - lx * sn + lz * c];
+    const [nx, nz] = at(0, 3), [tx, tz] = at(0, -9.5);
+    addBoxObstacle({ cx: nx, cz: nz, cy: base + 6, hx: 5, hy: 6.5, hz: 10.5, cos: Math.cos(rot), sin: Math.sin(rot), label: 'Hit the church' });
+    addBoxObstacle({ cx: tx, cz: tz, cy: base + 17, hx: 3.2, hy: 17, hz: 3.2, cos: Math.cos(rot), sin: Math.sin(rot), label: 'Hit the church spire' });
+    // Floodlit spire at night.
+    nightLights.push([tx, base + 30, tz, 1.0, 0.85, 0.6]);
+  }
   return g;
 }
 
@@ -1106,6 +1289,7 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
   const airportLights = buildAirportLights(AL);
   scene.add(airportLights.points);
   scene.add(buildVillages(nightLights));
+  scene.add(buildRoads(nightLights));
   scene.add(buildTrees(quality === 'low' ? 3500 : 10000));
   scene.add(buildRocks(quality === 'low' ? 2500 : 7000));
 
@@ -1159,3 +1343,4 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
     },
   };
 }
+export { routeRoad as _routeRoad, roadNodes as _roadNodes }; // for tests
