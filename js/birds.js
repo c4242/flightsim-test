@@ -21,6 +21,9 @@ export class Birds {
       0, 0, -0.18, -w, 0, 0.05, 0, 0, 0.12,   // left wing
       0, 0, -0.18, 0, 0, 0.12, w, 0, 0.05,    // right wing
     ], 3));
+    // Which way each vertex is pushed to give the wing a minimum on-screen thickness: seen
+    // edge-on from level flight a flat wing would otherwise be thinner than a pixel and vanish.
+    geo.setAttribute('aSide', new THREE.Float32BufferAttribute([1, 0, -1, 1, -1, 0], 1));
     const n = HOMES.length * PER;
     this.n = n;
     this.offset = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
@@ -36,7 +39,7 @@ export class Birds {
       vertexShader: /* glsl */`
         uniform float uTime;
         attribute vec3 aOffset, aDir;
-        attribute float aPhase;
+        attribute float aPhase, aSide;
         void main() {
           vec3 p = position;
           // Flap: wingtips move up and down; some of the time the bird glides with wings level.
@@ -53,6 +56,7 @@ export class Birds {
           vec4 mvc = viewMatrix * vec4(aOffset, 1.0);
           float k = max(1.0, -mvc.z * 0.0012 / 0.55);
           mv.xyz = mvc.xyz + (mv.xyz - mvc.xyz) * k;
+          mv.y += aSide * 0.0008 * -mvc.z;   // about a pixel thick at least
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */`

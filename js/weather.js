@@ -54,13 +54,16 @@ export class Weather {
     // Turbulence: band-limited noise in space and time, strongest low down and over rough terrain.
     const rough = 1 + clamp((pos.y - agl) / 600, 0, 1.5);
     const low = 1.2 - clamp(agl / 1500, 0, 0.8);
-    const amp = s.turb * rough * low;
+    // Convective bumps inside cumulus (cloud = density at the aircraft, set by the sim).
+    const cloud = this.cloud ?? 0;
+    const amp = s.turb * rough * low + 2.2 * cloud;
     if (amp > 0) {
       const t = this.time;
       out.x += amp * n.fbm(pos.x * 0.01 + t * 0.7, pos.z * 0.01, 3);
       out.y += amp * 0.8 * n.fbm(pos.x * 0.012 - 50, pos.z * 0.012 + t * 0.9, 3);
       out.z += amp * n.fbm(pos.z * 0.01 + 31, pos.x * 0.01 - t * 0.6, 3);
     }
+    out.y += 1.5 * cloud; // the rising air that builds the cloud
     return out;
   }
 }

@@ -3,6 +3,7 @@
 // the mesh uses, so what you see is exactly what you collide with.
 
 import * as THREE from 'three';
+import { cloudShadowUniforms, CLOUD_SHADOW_GLSL } from './cloudshadow.js';
 import { createNoise, smoothstep, lerp, clamp } from './noise.js';
 import { createDetailPatch } from './terrain-detail.js';
 
@@ -189,6 +190,7 @@ export function applyTerrainShadow(mat, { relief = false } = {}) {
   mat.onBeforeCompile = (sh, r) => {
     prev?.(sh, r);
     sh.uniforms.sunShadowMap = { value: sunShadowTex };
+    cloudShadowUniforms(sh);
     if (!sh.vertexShader.includes('varying vec3 vTsWorld')) {
       sh.vertexShader = 'varying vec3 vTsWorld;\n' + sh.vertexShader.replace('#include <worldpos_vertex>',
         `#include <worldpos_vertex>
@@ -201,8 +203,8 @@ export function applyTerrainShadow(mat, { relief = false } = {}) {
     const lights = THREE.ShaderChunk.lights_fragment_begin.replace(
       'getDirectionalLightInfo( directionalLight, directLight );',
       'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= tsSun;');
-    sh.fragmentShader = 'uniform sampler2D sunShadowMap;\nvarying vec3 vTsWorld;\n' + sh.fragmentShader.replace('#include <lights_fragment_begin>',
-      `float tsSun = texture2D(sunShadowMap, (vTsWorld.xz + ${HALF.toFixed(1)}) / ${CELL.toFixed(4)} / ${VERTS.toFixed(1)} + ${(0.5 / VERTS).toFixed(6)}).r;
+    sh.fragmentShader = 'uniform sampler2D sunShadowMap;\nvarying vec3 vTsWorld;\n' + CLOUD_SHADOW_GLSL + "\n" + sh.fragmentShader.replace('#include <lights_fragment_begin>',
+      `float tsSun = texture2D(sunShadowMap, (vTsWorld.xz + ${HALF.toFixed(1)}) / ${CELL.toFixed(4)} / ${VERTS.toFixed(1)} + ${(0.5 / VERTS).toFixed(6)}).r * cloudSun(vTsWorld);
       ${lights}`);
     if (relief) {
       // Fine relief: bump the normal with the gradient of the detail noise at two scales.

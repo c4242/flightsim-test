@@ -609,7 +609,10 @@ function updateHeatShimmer(dt) {
 
 // ---------- Rain ----------
 // Heaviest below the cloud base, lighter inside the cloud, none above it.
+let glassMist = 0; // droplets collected flying through cloud; they blow off over a few seconds
 function updateRain(dt) {
+  const mist = sky.inCloud * 0.4;
+  glassMist = mist > glassMist ? glassMist + (mist - glassMist) * Math.min(1, dt * 3) : glassMist * Math.exp(-dt / 4);
   const raining = sky.raining;
   weather.rain = raining;
   const h = camera.position.y;
@@ -618,7 +621,8 @@ function updateRain(dt) {
   const light = sky.env.night ? 0.25 : 1;
   rain.update(dt, camera, subject.vel ?? aircraft.vel, weather.surfaceWind, amount, ground, light);
   // Drops on the windscreen in the cockpit view; the airflow sweeps them away at speed.
-  const onGlass = cameraMode === 'cockpit' && !replaying ? amount * 0.55 : 0;
+  // Flying through cloud mists the glass too.
+  const onGlass = cameraMode === 'cockpit' && !replaying ? Math.max(amount * 0.55, glassMist) : 0;
   post.setRainGlass(onGlass, Math.min(1, (subject.speed ?? 0) / 75), dt);
   setRain(amount);
 }
@@ -649,6 +653,7 @@ function frame(now) {
     const intent = updateControls(aircraft, dt);
     autopilot.update(aircraft, dt, autopilot.on ? intent : null);
     weather.update(dt);
+    weather.cloud = sky.densityAt(aircraft.pos.x, aircraft.pos.y, aircraft.pos.z);
     acc += dt;
     let steps = 0;
     while (acc >= STEP && steps < 24) {
@@ -707,7 +712,7 @@ function frame(now) {
   model.object.quaternion.copy(subject.quat);
   model.update(subject, paused && !replaying ? 0 : dt);
   updateCamera(paused && !replaying ? 0 : dt);
-  sky.update(camera, subject.pos);
+  sky.update(camera, subject.pos, dt);
   world.update(clock, camera, weather.surfaceWind, sky.env.night || sky.haze > 0.3 || sky.cloudMode === "low" || sky.cloudMode === "rain");
   if (cameraMode === 'cockpit' && !replaying) {
     panelTimer -= dt;
@@ -744,4 +749,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { sky, birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

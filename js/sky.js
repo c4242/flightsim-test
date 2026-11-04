@@ -2,6 +2,7 @@
 // `env` holds the shared sun/sky colours that the water shader also reads.
 
 import * as THREE from 'three';
+import { cloudShadow, CLOUD_EXTENT } from './cloudshadow.js';
 
 const PRESETS = {
   morning: { elev: 14, az: 95, sun: '#ffd2a0', sunI: 2.3, hemiSky: '#c9d8f0', hemiGround: '#5e5a48', hemiI: 0.9,
@@ -127,6 +128,8 @@ export function createSky(scene, renderer) {
 
   const clouds = buildClouds();
   scene.add(clouds.group);
+  cloudShadow.map.value = clouds.shadowTexture();
+  let cumulus = 0; // cumulus density around the camera
 
   // ---------- Overcast cloud deck and fog ----------
   const deckTex = deckTexture();
@@ -184,8 +187,16 @@ export function createSky(scene, renderer) {
     get raining() { return cloudMode === 'rain'; },
     // 0 = clear sky around the camera, 1 = under overcast / in cloud / in fog.
     get haze() { return domeMat.uniforms.haze.value; },
-    update(camera, focus) {
+    // Cumulus density at the camera (0 outside, 1 deep in a cloud).
+    get inCloud() { return cumulus; },
+    densityAt: (x, y, z) => (cloudMode === 'scattered' ? clouds.densityAt(x, y, z) : 0),
+    update(camera, focus, dt = 1 / 60) {
       dome.position.copy(camera.position);
+      cloudShadow.sunDir.value.copy(env.sunDir);
+      cloudShadow.strength.value = cloudMode === 'scattered' ? (env.night ? 0.3 : 0.72) : 0;
+      const cp = camera.position;
+      const target = cloudMode === 'scattered' ? clouds.densityAt(cp.x, cp.y, cp.z) : 0;
+      cumulus += (target - cumulus) * Math.min(1, 12 * dt);
       clouds.update(env.sunDir, env.horizon, scene.fog);
       // Blend lighting, fog and sky for the weather around the camera.
       const h = camera.position.y;
@@ -212,8 +223,9 @@ export function createSky(scene, renderer) {
         fogNear = 0; fogFar = 900 + clear * 14000;
         grey.multiplyScalar(1.12);
       }
+      inside = Math.max(inside, cumulus);
       // Inside cloud: white-out at a few dozen metres.
-      if (inside > 0.01) { fogNear = 0; fogFar = fogFar + (90 - fogFar) * inside; }
+      if (inside > 0.01) { const k = 1 - (1 - inside) ** 4; fogNear *= 1 - k; fogFar = fogFar + (90 - fogFar) * k; }
       const haze = Math.max(below, inside);
       tmp.copy(grey).lerp(new THREE.Color(lum * 1.15, lum * 1.15, lum * 1.18), inside);
       domeMat.uniforms.hazeColor.value.copy(tmp);
@@ -309,8 +321,10 @@ function buildClouds() {
       varying vec2 vUv;
       varying vec3 vWorld;
       varying float vBase, vRand, vR;
+      varying vec3 vCentre;
       void main() {
         vUv = position.xy;
+        vCentre = aPuff.xyz;
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
         vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
         vWorld = aPuff.xyz + (right * position.x + up * position.y) * aPuff.w;
@@ -323,6 +337,7 @@ function buildClouds() {
       varying vec2 vUv;
       varying vec3 vWorld;
       varying float vBase, vRand, vR;
+      varying vec3 vCentre;
       float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
       float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
@@ -344,6 +359,9 @@ function buildClouds() {
         col += sunColor * back * (0.25 + 0.35 * smoothstep(0.2, 0.9, r2));
         float alpha = smoothstep(1.0, 0.55, r2) * (0.75 + 0.25 * lump);
         float d = length(vWorld - cameraPosition);
+        // Fade a puff out as the camera reaches it, so flying in never shows a flat card;
+        // the white-out fog takes over inside the cloud.
+        alpha *= smoothstep(0.25, 1.1, length(vCentre - cameraPosition) / vR);
         col = mix(col, fogColor, smoothstep(fogNear, fogFar, d));
         gl_FragColor = vec4(col, alpha);
         #include <colorspace_fragment>
@@ -353,8 +371,53 @@ function buildClouds() {
   mesh.frustumCulled = false;
   const group = new THREE.Group();
   group.add(mesh);
+  // Spatial grid of puffs for "am I inside a cloud?" queries.
+  const GRID = 1000, grid = new Map();
+  for (const p of puffs) {
+    const x0 = Math.floor((p[0] - p[3]) / GRID), x1 = Math.floor((p[0] + p[3]) / GRID);
+    const z0 = Math.floor((p[2] - p[3]) / GRID), z1 = Math.floor((p[2] + p[3]) / GRID);
+    for (let i = x0; i <= x1; i++) for (let j = z0; j <= z1; j++) {
+      const k = i * 4096 + j;
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(p);
+    }
+  }
   return {
     group,
+    // Cloud density 0..1 at a point: 1 deep inside a puff, fading out towards its edge.
+    densityAt(x, y, z) {
+      const list = grid.get(Math.floor(x / GRID) * 4096 + Math.floor(z / GRID));
+      if (!list) return 0;
+      let d = 0;
+      for (const p of list) {
+        const dx = x - p[0], dy = (y - p[1]) * 1.3, dz = z - p[2];
+        const q = Math.sqrt(dx * dx + dy * dy + dz * dz) / p[3];
+        if (q < 1) d = Math.max(d, smooth(1, 0.55, q));
+      }
+      return d;
+    },
+    // Top-down cover map: soft blobs where the puffs are, used for shadows on the ground.
+    shadowTexture() {
+      const S = 1024, cv = document.createElement('canvas');
+      cv.width = cv.height = S;
+      const g = cv.getContext('2d');
+      g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
+      const k = S / CLOUD_EXTENT;
+      for (const p of puffs) {
+        const x = (p[0] / CLOUD_EXTENT + 0.5) * S, y = (p[2] / CLOUD_EXTENT + 0.5) * S, r = p[3] * 0.95 * k;
+        const grad = g.createRadialGradient(x, y, 0, x, y, r);
+        grad.addColorStop(0, 'rgba(255,255,255,0.55)');
+        grad.addColorStop(0.6, 'rgba(255,255,255,0.4)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = grad;
+        g.fillRect(x - r, y - r, 2 * r, 2 * r);
+      }
+      const tex = new THREE.CanvasTexture(cv);
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.anisotropy = 4;
+      return tex;
+    },
     tint(color, elev) {
       const bright = 0.7 + 0.3 * Math.min(1, elev / 40);
       uniforms.sunColor.value.copy(color).multiplyScalar(1.05 * bright);

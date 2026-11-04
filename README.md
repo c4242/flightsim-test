@@ -100,7 +100,9 @@ Skyhaven's runway is 2,400 m so the F-16 can operate from it. Eastfield (850 m) 
 
 - **Clouds** (Settings → Clouds):
   - **Clear.**
-  - **Scattered:** cumulus.
+  - **Scattered:** cumulus, with their shadows drifting over the ground. You can fly into them: the
+    view whites out, the air gets bumpy with a gentle updraft, and in the cockpit the windscreen mists
+    with droplets that blow off once you're out.
   - **Overcast:** a solid deck with its base at about 1,500 ft. Below it the sky is grey and the light is
     flat. Inside it you're in white-out. Above it you're in sunshine over a sea of cloud, with the mountain
     tops poking through.
@@ -263,7 +265,9 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 - **Aerial perspective:** haze is densest low down and thins with height (about a 1.8 km scale height).
   Valleys and distant low ground fade into it, while from high up the ground far below stays clear.
 - **Cumulus clouds:** each puff is lit like a soft sphere, with sunlit tops, grey bases, light through the
-  edges and a glow when you look towards the sun.
+  edges and a glow when you look towards the sun. They cast shadows on the terrain, buildings and trees,
+  offset along the sun's direction (long in the morning and evening). Puffs fade as you reach them, so
+  flying into one never shows a flat card.
 - **Heat shimmer:** the air behind the F-16's nozzle ripples, more strongly in afterburner.
 - **Airport lighting:**
   - Runway edge lights, the green threshold bar and the red end bar.
@@ -316,6 +320,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/trails.js` | High-altitude contrails. |
 | `js/terrain-detail.js` | The detailed terrain patch around the camera, with its heights computed on the GPU. |
 | `js/birds.js` | Flocks of birds and bird strikes. |
+| `js/cloudshadow.js` | Shared cumulus cover map and the shader function that shades sunlight under clouds. |
 | `js/rain.js` | Falling rain streaks around the camera. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |
 | `js/autopilot.js` | Heading and altitude hold with coordinated turns and stall protection. |
