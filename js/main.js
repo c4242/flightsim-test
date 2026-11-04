@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { buildWorld, terrainHeight, AIRFIELDS, fieldToWorld, runwayAt } from './terrain.js';
+import './atmos.js'; // must come before anything is rendered
+import { buildWorld, bakeTerrainShadows, terrainHeight, AIRFIELDS, fieldToWorld, runwayAt } from './terrain.js';
 import { createSky, TIMES_OF_DAY } from './sky.js';
 import { Aircraft, MS_TO_KT } from './aircraft.js';
 import { createAircraftModel } from './model.js';
@@ -82,8 +83,11 @@ function updateTouchLabels() {
   up.dataset.key = jet ? 'KeyX' : 'KeyT';
 }
 
+let shadowsFor = null;
 function applyTime(name) {
   sky.setTimeOfDay(name);
+  // Re-bake the mountain shadows when the sun (or moon) moves.
+  if (shadowsFor !== name) { bakeTerrainShadows(sky.env.sunDir); shadowsFor = name; }
   for (const m of Object.values(MODELS)) m.setLights(sky.env.night);
   traffic?.model.setLights(sky.env.night);
 }
@@ -560,6 +564,24 @@ function adaptResolution(dt) {
 }
 let prevMach = 0;
 
+// ---------- Heat shimmer behind the jet nozzle (outside views only) ----------
+const _hA = new THREE.Vector3(), _hB = new THREE.Vector3();
+function updateHeatShimmer(dt) {
+  const s = subject;
+  const power = kind() === 'jet' && !aircraft.crashed && cameraMode !== 'cockpit' ? Math.max(0, ((s.n2 ?? 0) - 0.7) / 0.3) : 0;
+  if (power <= 0) { post.setHeat([0, 0], [0, 0], 0, 0, dt); return; }
+  _hA.set(0, -0.05, 5.4).applyQuaternion(s.quat).add(s.pos);
+  _hB.set(0, -0.05, 5.4 + 16).applyQuaternion(s.quat).add(s.pos);
+  const dist = camera.position.distanceTo(_hA);
+  _hA.project(camera); _hB.project(camera);
+  if (_hA.z > 1 || _hB.z > 1) { post.setHeat([0, 0], [0, 0], 0, 0, dt); return; }
+  const toPx = (v) => [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight];
+  const pxPerM = innerHeight / (2 * Math.tan(camera.fov * Math.PI / 360)) / Math.max(1, dist);
+  // Stronger in afterburner; the shimmer is washed out by high-speed airflow.
+  const strength = power * (s.abLit ? 1 : 0.6) * (1 - 0.5 * Math.min(1, (s.speed ?? 0) / 300));
+  post.setHeat(toPx(_hA), toPx(_hB), Math.max(10, 1.3 * pxPerM), strength, dt);
+}
+
 // ---------- Main loop ----------
 const STEP = 1 / 240;
 let acc = 0;
@@ -644,6 +666,7 @@ function frame(now) {
     }
   }
   updateAudio(replaying ? { ...aircraft, crashed: true } : aircraft);
+  updateHeatShimmer(dt);
   post.render();
   flare.draw(camera, sky.env.sunDir, { haze: sky.haze, night: sky.env.night, dt });
   hud.draw(aircraft, camera, cameraMode, paused && !replaying ? 0 : dt, {
@@ -664,4 +687,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

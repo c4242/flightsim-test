@@ -234,6 +234,16 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
   blocks the sun.
 - **Contrails:** above about 26,000 ft, the F-16 leaves a condensation trail that forms just behind the
   nozzle and spreads and fades over 45 seconds.
+- **Mountain shadows:** the terrain casts sun shadows across the island. They're computed for the sun's
+  position at each time of day, so they're long at sunrise and sunset and short at noon, and they fall on
+  trees and houses too.
+- **Terrain relief:** fine bumps in the lighting at two scales, so slopes have texture rather than looking
+  like smooth facets.
+- **Aerial perspective:** haze is densest low down and thins with height (about a 1.8 km scale height).
+  Valleys and distant low ground fade into it, while from high up the ground far below stays clear.
+- **Cumulus clouds:** each puff is lit like a soft sphere, with sunlit tops, grey bases, light through the
+  edges and a glow when you look towards the sun.
+- **Heat shimmer:** the air behind the F-16's nozzle ripples, more strongly in afterburner.
 - **Altitude:** the sky deepens to a dark blue and the haze clears as you climb.
 
 - Image-based lighting: the sky is rendered into an environment map, so paint, metal and glass reflect
@@ -263,6 +273,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/model-f16.js` | The F-16 wrapper: cockpit interior, afterburner flame and lights, plus the simple fallback model. Its parts: moving stabilators, flaperons and rudder, speedbrakes, retracting gear, afterburner plume, wingtip AIM-9s, landing light and cockpit. |
 | `js/nav.js` | The ILS: localizer, glideslope and DME for both runway ends. |
 | `js/tanker.js` | The refuelling tanker: racetrack flight path, model, boom, contact envelope, director cues and fuel transfer. |
+| `js/atmos.js` | Height-dependent aerial perspective, replacing three.js's distance fog for all materials. |
 | `js/exhaust.js` | The volumetric afterburner plume, nozzle glow and flame light. |
 | `js/post.js` | HDR rendering with bloom, tone mapping and vignette. |
 | `js/flare.js` | Sun lens flare with terrain and cloud occlusion. |

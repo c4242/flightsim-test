@@ -96,6 +96,83 @@ export function terrainHeight(x, z) {
   return hd + (hc - hd) * (1 - fx) + (hb - hd) * (1 - fz);
 }
 
+// ---------- Terrain sun shadows ----------
+// For each grid vertex, march towards the sun across the heightfield and record how far the sun
+// is above the local horizon. Baked into a texture each time the sun moves (time of day); gives
+// mountain shadows with soft edges (the sun is half a degree wide, plus some blur for scattering).
+const sunShadow = new Uint8Array(VERTS * VERTS).fill(255);
+export const sunShadowTex = typeof document === 'undefined' ? null : (() => {
+  const t = new THREE.DataTexture(sunShadow, VERTS, VERTS, THREE.RedFormat, THREE.UnsignedByteType);
+  t.magFilter = t.minFilter = THREE.LinearFilter;
+  t.needsUpdate = true;
+  return t;
+})();
+
+export function bakeTerrainShadows(sunDir) {
+  const horiz = Math.hypot(sunDir.x, sunDir.z);
+  const tanSun = sunDir.y / Math.max(1e-4, horiz);
+  const dx = sunDir.x / Math.max(1e-4, horiz), dz = sunDir.z / Math.max(1e-4, horiz);
+  const penumbra = 0.035; // radians of soft edge
+  for (let i = 0; i < VERTS; i++) {
+    for (let j = 0; j < VERTS; j++) {
+      const x = -HALF + j * CELL, z = -HALF + i * CELL;
+      const h0 = Math.max(heights[i * VERTS + j], SEA_LEVEL) + 2;
+      let maxTan = -1;
+      for (let d = CELL * 0.7; d < 14000; d *= 1.07) {
+        const h = terrainHeight(x + dx * d, z + dz * d);
+        const tn = (h - h0) / d;
+        if (tn > maxTan) maxTan = tn;
+        // Nothing further can rise above the sun line once we're well above the highest peaks.
+        if (h0 + d * Math.max(tanSun, maxTan) > 1800) break;
+      }
+      // Angle of the sun above the terrain horizon, mapped to 0 (in shadow) .. 1 (sunlit).
+      const margin = Math.atan(tanSun) - Math.atan(maxTan);
+      sunShadow[i * VERTS + j] = Math.round(255 * Math.min(1, Math.max(0, 0.5 + margin / penumbra)));
+    }
+  }
+  if (sunShadowTex) sunShadowTex.needsUpdate = true;
+}
+
+// Adds terrain sun shadows (and an optional relief bump) to a lit material.
+export function applyTerrainShadow(mat, { relief = false } = {}) {
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    prev?.(sh, r);
+    sh.uniforms.sunShadowMap = { value: sunShadowTex };
+    if (!sh.vertexShader.includes('varying vec3 vTsWorld')) {
+      sh.vertexShader = 'varying vec3 vTsWorld;\n' + sh.vertexShader.replace('#include <worldpos_vertex>',
+        `#include <worldpos_vertex>
+  vec4 tsP = vec4(transformed, 1.0);
+  #ifdef USE_INSTANCING
+    tsP = instanceMatrix * tsP;
+  #endif
+  vTsWorld = (modelMatrix * tsP).xyz;`);
+    }
+    const lights = THREE.ShaderChunk.lights_fragment_begin.replace(
+      'getDirectionalLightInfo( directionalLight, directLight );',
+      'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= tsSun;');
+    sh.fragmentShader = 'uniform sampler2D sunShadowMap;\nvarying vec3 vTsWorld;\n' + sh.fragmentShader.replace('#include <lights_fragment_begin>',
+      `float tsSun = texture2D(sunShadowMap, (vTsWorld.xz + ${HALF.toFixed(1)}) / ${CELL.toFixed(4)} / ${VERTS.toFixed(1)} + ${(0.5 / VERTS).toFixed(6)}).r;
+      ${lights}`);
+    if (relief) {
+      // Fine relief: bump the normal with the gradient of the detail noise at two scales.
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          float tsDist = length(vTsWorld - cameraPosition);
+          float e = 1.0 / 256.0;
+          vec2 u1 = vTsWorld.xz / 41.0, u2 = vTsWorld.xz / 310.0;
+          float a1 = texture2D(detailMap, u1).g, a2 = texture2D(detailMap, u2).r;
+          vec2 g1 = vec2(texture2D(detailMap, u1 + vec2(e, 0.0)).g - a1, texture2D(detailMap, u1 + vec2(0.0, e)).g - a1);
+          vec2 g2 = vec2(texture2D(detailMap, u2 + vec2(e, 0.0)).r - a2, texture2D(detailMap, u2 + vec2(0.0, e)).r - a2);
+          vec2 g = g1 * 4.0 * (1.0 - smoothstep(150.0, 1500.0, tsDist)) + g2 * 10.0 * (1.0 - smoothstep(1500.0, 12000.0, tsDist));
+          vec3 gw = vec3(g.x, 0.0, g.y);
+          normal = normalize(normal - (viewMatrix * vec4(gw, 0.0)).xyz);
+        }`);
+    }
+  };
+  return mat;
+}
+
 // Surface the aircraft can touch: ground or water, whichever is higher.
 export function surfaceInfo(x, z) {
   const h = terrainHeight(x, z);
@@ -283,6 +360,7 @@ function buildTerrainMesh() {
       float k = 1.0 + (d1.r - 0.5) * 0.5 * nearK + (d2.g - 0.5) * 0.45 * midK + (d3.b - 0.5) * 0.35;
       diffuseColor.rgb *= k;`);
   };
+  applyTerrainShadow(mat, { relief: true });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;
@@ -643,8 +721,8 @@ function buildVillages(nightLights) {
       houses.push({ v, x, z, w, d: dpt, rot, lo, hi, wallH: 3.5 + rnd() * 2.5 * (rnd() < 0.2 ? 2 : 1) });
     }
   }
-  const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), houses.length);
-  const roofs = new THREE.InstancedMesh(prismGeometry(), new THREE.MeshLambertMaterial({ color: 0xffffff }), houses.length);
+  const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), applyTerrainShadow(new THREE.MeshLambertMaterial({ color: 0xffffff })), houses.length);
+  const roofs = new THREE.InstancedMesh(prismGeometry(), applyTerrainShadow(new THREE.MeshLambertMaterial({ color: 0xffffff })), houses.length);
   walls.castShadow = roofs.castShadow = true;
   walls.receiveShadow = roofs.receiveShadow = true;
   const wallCols = ['#efe9dc', '#e8dcc0', '#f3efe6', '#d9cdb4', '#e6d2a8', '#cfd8dc'].map((c) => new THREE.Color(c));
@@ -693,8 +771,8 @@ function buildTrees(maxTrees) {
   const trunkGeo = new THREE.CylinderGeometry(0.25, 0.35, 3, 5).translate(0, 1.5, 0);
   const crownGeo = new THREE.ConeGeometry(2.6, 8, 7).translate(0, 6.5, 0);
   const broadGeo = new THREE.IcosahedronGeometry(3.2, 0).scale(1, 0.9, 1).translate(0, 5.2, 0);
-  const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), maxTrees);
-  const broads = new THREE.InstancedMesh(broadGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), maxTrees);
+  const crowns = new THREE.InstancedMesh(crownGeo, applyTerrainShadow(new THREE.MeshLambertMaterial({ color: 0xffffff })), maxTrees);
+  const broads = new THREE.InstancedMesh(broadGeo, applyTerrainShadow(new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true })), maxTrees);
   const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5a4030 }), maxTrees * 2);
   crowns.castShadow = broads.castShadow = true;
 

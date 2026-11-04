@@ -185,6 +185,7 @@ export function createSky(scene, renderer) {
     get haze() { return domeMat.uniforms.haze.value; },
     update(camera, focus) {
       dome.position.copy(camera.position);
+      clouds.update(env.sunDir, env.horizon, scene.fog);
       // Blend lighting, fog and sky for the weather around the camera.
       const h = camera.position.y;
       const lum = base.horizon.r * 0.3 + base.horizon.g * 0.55 + base.horizon.b * 0.15;
@@ -222,8 +223,6 @@ export function createSky(scene, renderer) {
       if (alt > 0) {
         env.zenith.lerp(altZenith.copy(base.zenith).multiplyScalar(env.night ? 0.6 : 0.42), alt * 0.85);
         env.horizon.lerp(altHorizon.copy(base.horizon).lerp(base.zenith, 0.35), alt * 0.6);
-        fogNear += (fogNear + 8000) * alt;
-        fogFar *= 1 + 2.5 * alt;
       }
       env.sunColor.copy(base.sun).multiplyScalar(1 - 0.85 * haze);
       sun.intensity = base.sunI * (1 - 0.8 * haze);
@@ -269,55 +268,100 @@ function deckTexture() {
   return tex;
 }
 
-function cloudTexture() {
-  const S = 128;
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = S;
-  const g = cv.getContext('2d');
-  for (let i = 0; i < 16; i++) {
-    const x = S / 2 + (Math.random() - 0.5) * S * 0.45;
-    const y = S / 2 + (Math.random() - 0.5) * S * 0.3;
-    const r = S * (0.16 + Math.random() * 0.16);
-    const grad = g.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, 'rgba(255,255,255,0.55)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, S, S);
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
+// Cumulus built from camera-facing puffs, each shaded as a soft sphere lit by the sun: bright
+// sunlit tops, grey bases, light scattering through the thin edges, and a silver lining when
+// looking towards the sun. One instanced draw call; fog applied in the shader.
 function buildClouds() {
-  const group = new THREE.Group();
-  const tex = [cloudTexture(), cloudTexture(), cloudTexture()];
-  // Lit tops, mid and shaded bases.
-  const shades = [1.0, 0.86, 0.72];
-  const mats = shades.map((v, i) => new THREE.SpriteMaterial({
-    map: tex[i], color: new THREE.Color(v, v, v), transparent: true, depthWrite: false, fog: true,
-  }));
+  const puffs = [];
   let s = 99;
   const rnd = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
   for (let c = 0; c < 130; c++) {
     const cx = (rnd() - 0.5) * 44000, cz = (rnd() - 0.5) * 44000;
-    const cy = 1200 + rnd() * 800;
+    const base = 1200 + rnd() * 800;
     const size = 220 + rnd() * 380;
-    const puffs = 6 + Math.floor(rnd() * 8);
-    for (let p = 0; p < puffs; p++) {
-      const top = rnd();
-      const sp = new THREE.Sprite(mats[top > 0.55 ? 0 : top > 0.2 ? 1 : 2]);
-      const k = size * (0.55 + rnd() * 0.7);
-      sp.scale.set(k * 1.6, k, 1);
-      sp.position.set(cx + (rnd() - 0.5) * size * 2.2, cy + top * size * 0.4, cz + (rnd() - 0.5) * size * 1.4);
-      group.add(sp);
+    const n = 8 + Math.floor(rnd() * 10);
+    for (let p = 0; p < n; p++) {
+      const up = rnd();
+      // A flat base and a heaped top: puffs higher up are smaller and nearer the middle.
+      const spread = 1 - 0.55 * up;
+      const r = size * (0.32 + 0.28 * rnd()) * (1 - 0.3 * up);
+      puffs.push([cx + (rnd() - 0.5) * size * 2.0 * spread, base + r * 0.55 + up * size * 0.75, cz + (rnd() - 0.5) * size * 1.4 * spread, r, base, rnd()]);
     }
   }
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
+  geo.setIndex([0, 1, 2, 0, 2, 3]);
+  geo.setAttribute('aPuff', new THREE.InstancedBufferAttribute(new Float32Array(puffs.flatMap((p) => p.slice(0, 4))), 4));
+  geo.setAttribute('aExtra', new THREE.InstancedBufferAttribute(new Float32Array(puffs.flatMap((p) => [p[4], p[5]])), 2));
+  geo.instanceCount = puffs.length;
+  const uniforms = {
+    sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunColor: { value: new THREE.Color(1, 1, 1) },
+    ambient: { value: new THREE.Color(0.6, 0.65, 0.75) }, shadeColor: { value: new THREE.Color(0.55, 0.58, 0.65) },
+    fogColor: { value: new THREE.Color() }, fogNear: { value: 1 }, fogFar: { value: 1e5 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms, transparent: true, depthWrite: false,
+    vertexShader: /* glsl */`
+      attribute vec4 aPuff;   // centre xyz, radius
+      attribute vec2 aExtra;  // cloud base height, random
+      varying vec2 vUv;
+      varying vec3 vWorld;
+      varying float vBase, vRand, vR;
+      void main() {
+        vUv = position.xy;
+        vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+        vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+        vWorld = aPuff.xyz + (right * position.x + up * position.y) * aPuff.w;
+        vBase = aExtra.x; vRand = aExtra.y; vR = aPuff.w;
+        gl_Position = projectionMatrix * viewMatrix * vec4(vWorld, 1.0);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 sunDir, sunColor, ambient, shadeColor, fogColor;
+      uniform float fogNear, fogFar;
+      varying vec2 vUv;
+      varying vec3 vWorld;
+      varying float vBase, vRand, vR;
+      float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+      float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+      void main() {
+        // Lumpy outline from noise, so puffs don't look like discs.
+        vec2 q = vUv * 2.2 + vRand * 31.0;
+        float lump = n2(q) * 0.5 + n2(q * 2.3) * 0.3 + n2(q * 5.1) * 0.2;
+        float r2 = dot(vUv, vUv) * (0.75 + 0.5 * lump);
+        if (r2 > 1.0) discard;
+        // Sphere normal in view space, then to world space.
+        vec3 nv = vec3(vUv, sqrt(max(0.0, 1.0 - min(r2, 1.0))));
+        vec3 n = normalize(transpose(mat3(viewMatrix)) * nv);
+        vec3 V = normalize(cameraPosition - vWorld);
+        float diff = dot(n, sunDir) * 0.5 + 0.5;              // wrapped lighting (light scatters through)
+        float height = clamp((vWorld.y - vBase) / max(vR * 2.0, 1.0), 0.0, 1.0);
+        vec3 col = mix(shadeColor, sunColor, diff * (0.55 + 0.45 * height)) + ambient * 0.25;
+        // Silver lining: thin edges glow when the sun is behind the cloud.
+        float back = pow(max(dot(-V, sunDir), 0.0), 6.0);
+        col += sunColor * back * (0.25 + 0.35 * smoothstep(0.2, 0.9, r2));
+        float alpha = smoothstep(1.0, 0.55, r2) * (0.75 + 0.25 * lump);
+        float d = length(vWorld - cameraPosition);
+        col = mix(col, fogColor, smoothstep(fogNear, fogFar, d));
+        gl_FragColor = vec4(col, alpha);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  const group = new THREE.Group();
+  group.add(mesh);
   return {
     group,
     tint(color, elev) {
-      const bright = 0.75 + 0.25 * Math.min(1, elev / 40);
-      mats.forEach((m, i) => m.color.copy(color).multiplyScalar(shades[i] * bright));
+      const bright = 0.7 + 0.3 * Math.min(1, elev / 40);
+      uniforms.sunColor.value.copy(color).multiplyScalar(1.05 * bright);
+      uniforms.shadeColor.value.copy(color).multiplyScalar(0.5 * bright).lerp(new THREE.Color(0.45, 0.5, 0.6), 0.4);
+    },
+    update(sunDir, horizon, fog) {
+      uniforms.sunDir.value.copy(sunDir);
+      uniforms.ambient.value.copy(horizon);
+      if (fog) { uniforms.fogColor.value.copy(fog.color); uniforms.fogNear.value = fog.near; uniforms.fogFar.value = fog.far; }
     },
   };
 }
