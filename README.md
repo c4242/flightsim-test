@@ -93,6 +93,10 @@ Checked performance from the test scripts:
 - It sways with what the pilot feels: pushed down under G, sideways in rolls and yaws, and forward
   under braking. It bounces a little on a hard landing.
 
+**HUD:** in the cockpit view the HUD symbology is drawn on the FlightGear cockpit's HUD combiner glass,
+inside its frame, and clipped to it. The flight path marker and pitch ladder stay conformal with the
+outside world. In the outside views it's drawn over the screen.
+
 **Cockpit:** the cockpit view uses the FlightGear F-16's 3D cockpit:
 - **What's in it:** the instrument panel, ICP keypad, side consoles, throttle, side-stick and seat, inside the
   real fuselage and canopy frame.

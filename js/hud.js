@@ -737,11 +737,23 @@ export function createHud(canvas) {
   // Turbine inlet temperature estimate for the engine gauges.
   const ftit = (ac) => Math.round(ac.engineFailed || ac.fuel <= 0 ? 200 + ac.n2 * 300 : 420 + Math.pow(Math.max(0, ac.n2 - 0.68) / 0.32, 1.4) * 450 + (ac.abLit ? 40 : 0));
 
-  function jetHud(ac, camera, conformal, warnings) {
+  // glass: the HUD combiner's outline on screen in the 3D cockpit ({ poly, cx, cy, w, h, top }):
+  // the symbology is then laid out on it and clipped to it, like the real HUD.
+  function jetHud(ac, camera, conformal, warnings, glass = null) {
     g.save();
     g.strokeStyle = HUDC; g.fillStyle = HUDC; g.lineWidth = 1.6;
     g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 3;
-    const cx = W / 2, cy = conformal ? H * 0.4 : H * 0.42;
+    let cx = W / 2, cy = conformal ? H * 0.4 : H * 0.42;
+    // Layout scale for the tapes and readouts.
+    let k = Math.max(0.55, Math.min(1, W / 1100, H / 620));
+    if (glass) {
+      cx = glass.cx; cy = glass.cy;
+      k = Math.max(0.45, Math.min(1.2, glass.w / 480));
+      g.beginPath();
+      glass.poly.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+      g.closePath();
+      g.clip();
+    }
     const pxPerRad = H / (2 * Math.tan((camera.fov * Math.PI / 180) / 2));
     // ---- Flight path marker and boresight ----
     let fx, fy;
@@ -784,7 +796,7 @@ export function createHud(canvas) {
     // ---- Pitch ladder (conformal only) ----
     if (conformal) {
       g.save();
-      g.beginPath(); g.rect(cx - 260, 50, 520, H * 0.62); g.clip();
+      if (!glass) { g.beginPath(); g.rect(cx - 260, 50, 520, H * 0.62); g.clip(); }
       g.font = `12px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
       const h = ac.heading;
       for (let p = -85; p <= 85; p += 5) {
@@ -795,6 +807,7 @@ export function createHud(canvas) {
         g.save();
         g.translate(s.x, s.y);
         g.rotate(-ac.roll);
+        if (glass) g.scale(k, k);
         g.beginPath();
         if (p === 0) {
           g.moveTo(-200, 0); g.lineTo(-30, 0); g.moveTo(30, 0); g.lineTo(200, 0);
@@ -814,13 +827,13 @@ export function createHud(canvas) {
       g.restore();
     }
     // ---- Tapes, readouts and warnings: scaled down on small screens so they don't crowd the view ----
-    const k = Math.max(0.55, Math.min(1, W / 1100, H / 620));
     g.save();
     g.translate(cx, cy); g.scale(k, k); g.translate(-cx, -cy);
     g.lineWidth = 1.6 / k;
     // ---- Heading tape ----
     g.font = `13px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    const deg = ac.heading * DEG, ty = Math.max(conformal ? 62 : 70, cy - (cy - 62) / k + 8);
+    const deg = ac.heading * DEG;
+    const ty = glass ? cy + (glass.top + 10 - cy) / k : Math.max(conformal ? 62 : 70, cy - (cy - 62) / k + 8);
     for (let d = Math.ceil((deg - 25) / 5) * 5; d <= deg + 25; d += 5) {
       const xx = cx + (d - deg) * 7;
       g.beginPath(); g.moveTo(xx, ty); g.lineTo(xx, ty + (d % 10 === 0 ? 9 : 5)); g.stroke();
@@ -829,7 +842,8 @@ export function createHud(canvas) {
     g.beginPath(); g.moveTo(cx, ty - 2); g.lineTo(cx - 5, ty - 9); g.lineTo(cx + 5, ty - 9); g.closePath(); g.fill();
     // ---- Airspeed tape (KCAS) ----
     const kcas = ac.ias * MS_TO_KT;
-    const ax = cx - 230;
+    const tapeX = glass ? 125 : 230; // on the combiner the tapes sit closer in, as on the real HUD
+    const ax = cx - tapeX;
     g.save();
     g.beginPath(); g.rect(ax - 60, cy - 110, 80, 220); g.clip();
     for (let v = Math.floor((kcas - 40) / 10) * 10; v <= kcas + 40; v += 10) {
@@ -851,7 +865,7 @@ export function createHud(canvas) {
     if (ac.abLit) g.fillText('AB', ax - 62, cy + 188);
     // ---- Altitude tape ----
     const alt = ac.altitude * M_TO_FT;
-    const bx = cx + 230;
+    const bx = cx + tapeX;
     g.save();
     g.beginPath(); g.rect(bx - 20, cy - 110, 110, 220); g.clip();
     g.font = `13px ${FONT}`;
@@ -999,7 +1013,7 @@ export function createHud(canvas) {
   }
 
   const errors = [];
-  function draw(ac, camera, cameraMode, dt, { wind, ap, rings, mission, replay, nav, tanker }) {
+  function draw(ac, camera, cameraMode, dt, { wind, ap, rings, mission, replay, nav, tanker, hudGlass }) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
     curNav = nav ?? null;
@@ -1010,7 +1024,7 @@ export function createHud(canvas) {
     // The jet's HUD is part of the aircraft and is always shown; H only hides the panels and readouts.
     // Each part is guarded: a failure in one (reported on screen by the caller) mustn't blank the rest.
     try {
-      if (jet) jetHud(ac, camera, cameraMode === 'cockpit', jetWarnings(ac));
+      if (jet) jetHud(ac, camera, cameraMode === 'cockpit', jetWarnings(ac), cameraMode === 'cockpit' ? hudGlass : null);
       else if (cameraMode === 'cockpit' && showPanel) cockpitHud(ac, camera);
     } catch (e) {
       for (let i = 0; i < 8; i++) g.restore();

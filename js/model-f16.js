@@ -273,7 +273,7 @@ export function createF16Model({ renderer } = {}) {
       cockpit.visible = false;
       eye.copy(FG_EYE);
       api.viewPitch = FG_VIEW_PITCH;
-      api.cockpitFov = FG_FOV;
+      api.cockpitFovH = FG_FOV; // FlightGear gives the horizontal field of view
       // The FlightGear cockpit sits inside the real fuselage and canopy, so keep them visible
       // (apart from the canopy glass, which only looks right from outside).
       fg.setCockpitView(false);

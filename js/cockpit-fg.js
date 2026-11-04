@@ -14,10 +14,10 @@ export const FG_EYE = new THREE.Vector3(0, 0.8579 - CG_Z, -4.105 - CG_X);
 export const FG_VIEW_PITCH = -15 * Math.PI / 180;
 export const FG_FOV = 68.5;
 
-// Sub-models we leave out: FlightGear's own HUD glass and symbology (we draw our HUD), the
-// kneeboards, the Block 10 stick, the DED/PFD/CDU/RWR/threat displays (Canvas-driven) and the
+// Sub-models we leave out: FlightGear's alternative HUD variants (HUDa, the standard HUD unit with
+// its frame and combiner glass, is kept; its symbology is ours), the kneeboards, the Block 10 stick, the DED/PFD/CDU/RWR/threat displays (Canvas-driven) and the
 // generic altimeter, which lives in FlightGear's base package rather than in the aircraft.
-const SKIP = new Set(['HUDa', 'HUDb', 'HUDc', 'HUDd', 'knee1', 'knee2', 'F-16-FS-B10', 'CDU', 'DED', 'PFD', 'THREAT', 'IFF', 'altitude']);
+const SKIP = new Set(['HUDb', 'HUDc', 'HUDd', 'knee1', 'knee2', 'F-16-FS-B10', 'CDU', 'DED', 'PFD', 'THREAT', 'IFF', 'altitude']);
 
 function resolve(path, from) {
   if (/^\/?Aircraft\/f16\//.test(path)) return ROOT + path.replace(/^\/?Aircraft\/f16\//, '');
@@ -42,6 +42,11 @@ export async function loadFlightGearCockpit({ renderer, mfdCanvases }) {
     // MFD screens get our canvases; everything else keeps the original textures.
     material(m, map, twoSided, name) {
       if (name === 'MFDimage1') return new THREE.MeshBasicMaterial({ map: mfdTextures[0], toneMapped: false });
+      // HUD combiner: clear glass with a faint green-gold coating; the symbology is drawn over it.
+      if (name === 'HUDImage2') {
+        return new THREE.MeshStandardMaterial({ color: 0xb8d8a0, roughness: 0.05, metalness: 0.3, transparent: true,
+          opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
+      }
       return new THREE.MeshStandardMaterial({
         map, color: new THREE.Color(m.rgb[0], m.rgb[1], m.rgb[2]),
         emissive: new THREE.Color(m.emis[0], m.emis[1], m.emis[2]), emissiveMap: m.emis.some((v) => v > 0.05) ? map : null,
@@ -161,5 +166,8 @@ export async function loadFlightGearCockpit({ renderer, mfdCanvases }) {
     model.update(P, dt);
   }
 
-  return { object: holder, update, mfdTextures };
+  // The combiner glass, so the HUD symbology can be confined to it on screen.
+  let hudGlass = null;
+  holder.traverse((o) => { if (o.isMesh && o.name === 'HUDImage2') hudGlass = o; });
+  return { object: holder, update, mfdTextures, hudGlass };
 }

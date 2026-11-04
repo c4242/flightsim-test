@@ -219,7 +219,10 @@ function updateCamera(dt) {
 
   if (cameraMode === 'cockpit') {
     // The mouse wheel zooms the cockpit view (to read a gauge or spot traffic).
-    fov = clamp((model.cockpitFov ?? 74) * Math.min(1, look.zoom), 20, 90);
+    // three.js wants the vertical field of view; FlightGear's cockpit FOV is horizontal.
+    const aspect = innerWidth / innerHeight;
+    const vfov = model.cockpitFovH ? 2 * Math.atan(Math.tan(model.cockpitFovH * Math.PI / 360) / aspect) * 180 / Math.PI : model.cockpitFov ?? 74;
+    fov = clamp(vfov * Math.min(1, look.zoom), 15, 90);
     const hp = updateHead(dt, aircraft, look);
     camera.position.copy(_v.copy(model.eye).add(hp).applyQuaternion(aircraft.quat).add(aircraft.pos));
     cockpitTilt.setFromAxisAngle(_xAxis, model.viewPitch ?? -0.1);
@@ -742,6 +745,32 @@ function updateAssetStatus() {
   }
 }
 
+// The HUD combiner glass of the 3D cockpit as an outline on screen (CSS pixels), or null.
+const _gp = new THREE.Vector3();
+function hudGlassOnScreen() {
+  const mesh = cameraMode === 'cockpit' && !replaying ? model.fgCockpit?.hudGlass : null;
+  if (!mesh) return null;
+  // The glass's own vertices (a handful), so the outline is the glass and not its bounding box.
+  const pa = mesh.geometry.attributes.position;
+  const pts = [];
+  for (let i = 0; i < pa.count; i++) {
+    _gp.fromBufferAttribute(pa, i).applyMatrix4(mesh.matrixWorld).project(camera);
+    if (_gp.z > 1 || _gp.z < -1) return null;
+    pts.push({ x: (_gp.x * 0.5 + 0.5) * innerWidth, y: (-_gp.y * 0.5 + 0.5) * innerHeight });
+  }
+  // Convex hull (monotone chain) of the projected corners.
+  pts.sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower = [], upper = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  for (const p of pts.slice().reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  const poly = lower.slice(0, -1).concat(upper.slice(0, -1));
+  const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (x1 - x0 < 20 || y1 - y0 < 20) return null;
+  return { poly, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0, top: y0 };
+}
+
 // ---------- Error reporting ----------
 // Anything that goes wrong at runtime is shown on screen (and the sim keeps running), so it can be
 // seen and reported instead of silently breaking part of the display.
@@ -871,6 +900,7 @@ function frameBody(now) {
     wind: aircraft.wind, ap: autopilot, rings, mission: missions, tanker: kind() === 'jet' ? tanker : null,
     nav: aircraft.crashed ? null : ilsGuidance(aircraft.pos, aircraft.heading),
     replay: replaying ? { t: recorder.t, duration: recorder.duration } : null,
+    hudGlass: hudGlassOnScreen(),
   });
 }
 
