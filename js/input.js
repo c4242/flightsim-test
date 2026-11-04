@@ -4,7 +4,7 @@ import { clamp } from './noise.js';
 
 const held = new Set();
 const pressedQueue = [];
-const look = { yaw: 0, pitch: 0, dragging: false, idle: 0 };
+const look = { yaw: 0, pitch: 0, dragging: false, idle: 0, zoom: 1 };
 const touch = { active: false, stickX: 0, stickY: 0, stickOn: false, throttle: null, brake: false, rudder: 0 };
 const options = { invertPitch: false, lookSensitivity: 1 };
 
@@ -19,8 +19,9 @@ export const KEYMAP = [
   ['B', 'Wheel brakes (hold)'],
   ['[ / ]', 'Elevator trim nose down / up'],
   ['Z', 'Autopilot on / off (stick keys then steer the heading and altitude)'],
-  ['C', 'Camera: chase, cockpit, tower, flyby'],
-  ['Mouse drag', 'Look around (double-click to recentre)'],
+  ['F1 / F2 / F3 / F4', 'Camera: cockpit / chase / tower / flyby'],
+  ['C', 'Cycle the cameras'],
+  ['Mouse drag / wheel', 'Look around / zoom the chase camera (double-click to reset)'],
   ['N', 'Map'],
   ['V', 'Instant replay of the last minute (C changes camera)'],
   ['H', 'Hide / show the instrument panel, readouts and minimap (the F-16 HUD always stays on)'],
@@ -36,7 +37,8 @@ export function initInput(canvas) {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     if (!held.has(e.code)) pressedQueue.push(e.code);
     held.add(e.code);
-    if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+    // Arrows and Space would scroll; F1-F4 are camera keys here (not browser help/find).
+    if (e.code.startsWith('Arrow') || e.code === 'Space' || /^F[1-4]$/.test(e.code)) e.preventDefault();
   });
   addEventListener('keyup', (e) => held.delete(e.code));
   addEventListener('blur', () => held.clear());
@@ -53,7 +55,12 @@ export function initInput(canvas) {
     look.yaw = clamp(look.yaw - e.movementX * k, -Math.PI, Math.PI);
     look.pitch = clamp(look.pitch - e.movementY * k, -1.2, 1.2);
   });
-  canvas.addEventListener('dblclick', () => { look.yaw = look.pitch = 0; });
+  canvas.addEventListener('dblclick', () => { look.yaw = look.pitch = 0; look.zoom = 1; });
+  // Mouse wheel: move the chase camera closer or further away.
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    look.zoom = clamp(look.zoom * Math.exp(e.deltaY * 0.001), 0.35, 4);
+  }, { passive: false });
 }
 
 // ---------- Touch controls ----------

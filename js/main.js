@@ -21,6 +21,9 @@ import { Traffic } from './traffic.js';
 import { Recorder } from './replay.js';
 import { loadSettings, saveSettings, isTouch } from './settings.js';
 import { clamp } from './noise.js';
+import { createPost } from './post.js';
+import { createFlare } from './flare.js';
+import { Contrails } from './trails.js';
 
 const settings = loadSettings();
 const low = settings.quality === 'low';
@@ -37,6 +40,7 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.2, 60000);
+const post = createPost(renderer, scene, camera, { enabled: !low });
 
 const sky = createSky(scene, renderer);
 sky.setShadows(!low);
@@ -49,7 +53,7 @@ weather.randomise();
 // Both aircraft are built up front; only the selected one is shown.
 const TYPES = { skylark: SKYLARK, f16: F16 };
 const MODELS = { skylark: createAircraftModel(), f16: createF16Model({ renderer }) };
-for (const m of Object.values(MODELS)) { scene.add(m.object); m.object.visible = false; }
+for (const m of Object.values(MODELS)) { scene.add(m.object); m.object.visible = false; m.camera = camera; }
 if (!TYPES[settings.aircraft]) settings.aircraft = 'skylark';
 const aircraft = new Aircraft(TYPES[settings.aircraft]);
 let model = MODELS[settings.aircraft];
@@ -89,6 +93,9 @@ const autopilot = new Autopilot();
 const traffic = new Traffic(scene);
 const missions = new MissionRunner();
 const tanker = new Tanker(scene);
+const contrails = new Contrails(scene);
+const NOZZLE = [new THREE.Vector3(0, -0.05, 5.6)];
+const contrailColor = new THREE.Color();
 missions.ctx = { tanker };
 const recorder = new Recorder();
 let replaying = false;
@@ -96,6 +103,7 @@ applyTime(settings.timeOfDay);
 sky.setClouds(settings.clouds);
 
 const hud = createHud(document.getElementById('hud'));
+const flare = createFlare(document.getElementById('flare'));
 initInput(renderer.domElement);
 setInputOptions({ invertPitch: settings.invertPitch, lookSensitivity: settings.lookSensitivity });
 setVolume(settings.volume);
@@ -109,6 +117,7 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  post.setSize(innerWidth, innerHeight);
 });
 
 // ---------- Camera ----------
@@ -176,7 +185,7 @@ function updateCamera(dt) {
   } else {
     if (!aircraft.crashed) chaseQuat.slerp(aircraft.quat, 1 - Math.exp(-dt * 4));
     _q.copy(chaseQuat).multiply(lookQuat).multiply(tilt);
-    camera.position.copy((kind() === 'jet' ? _v.set(0, 3.4, 24) : _v.set(0, 2.2, 14)).applyQuaternion(_q).add(aircraft.pos));
+    camera.position.copy((kind() === 'jet' ? _v.set(0, 3.4, 24) : _v.set(0, 2.2, 14)).multiplyScalar(look.zoom).applyQuaternion(_q).add(aircraft.pos));
     camera.quaternion.copy(_q);
     const ground = Math.max(0, terrainHeight(camera.position.x, camera.position.z)) + 1;
     if (camera.position.y < ground) camera.position.y = ground;
@@ -284,6 +293,7 @@ function spawn(id) {
   stopReplay();
   clearTimeout(resultTimer);
   effects.clear();
+  contrails.clear();
   autopilot.disengage();
   recorder.clear();
   traffic.reset();
@@ -366,15 +376,22 @@ function toggleAutopilot() {
   } else hud.message('Autopilot needs the aircraft airborne', '#fc6', 2);
 }
 
+// F1 cockpit, F2 chase, F3 tower, F4 flyby (C cycles through them).
+const CAMERA_KEYS = { F1: 'cockpit', F2: 'chase', F3: 'tower', F4: 'flyby' };
+function setCamera(mode, announce = true) {
+  if (mode === cameraMode) return;
+  cameraMode = mode;
+  snapCamera();
+  if (cameraMode === 'flyby') placeFlyby();
+  if (announce) hud.message(`Camera: ${cameraMode}`, '#fff', 1.5);
+}
+
 function handlePresses() {
   for (const code of consumePresses()) {
     if (replaying) {
       if (code === 'KeyV' || code === 'Escape' || code === 'KeyP') stopReplay();
-      else if (code === 'KeyC') {
-        cameraMode = ['chase', 'tower', 'flyby'][(['chase', 'tower', 'flyby'].indexOf(cameraMode) + 1) % 3];
-        snapCamera();
-        if (cameraMode === 'flyby') placeFlyby();
-      }
+      else if (code === 'KeyC') setCamera(['chase', 'tower', 'flyby'][(['chase', 'tower', 'flyby'].indexOf(cameraMode) + 1) % 3], false);
+      else if (CAMERA_KEYS[code] && CAMERA_KEYS[code] !== 'cockpit') setCamera(CAMERA_KEYS[code], false);
       continue;
     }
     if (code === 'KeyP' || code === 'Escape') {
@@ -386,10 +403,9 @@ function handlePresses() {
     } else if (paused) {
       continue;
     } else if (code === 'KeyC') {
-      cameraMode = CAMERA_MODES[(CAMERA_MODES.indexOf(cameraMode) + 1) % CAMERA_MODES.length];
-      snapCamera();
-      if (cameraMode === 'flyby') placeFlyby();
-      hud.message(`Camera: ${cameraMode}`, '#fff', 1.5);
+      setCamera(CAMERA_MODES[(CAMERA_MODES.indexOf(cameraMode) + 1) % CAMERA_MODES.length]);
+    } else if (CAMERA_KEYS[code]) {
+      setCamera(CAMERA_KEYS[code]);
     } else if (code === 'KeyG' && kind() === 'jet') {
       if (aircraft.onGround && aircraft.gearHandle) hud.message('Gear handle locked: weight on wheels', '#fc6', 2);
       else {
@@ -540,7 +556,7 @@ function adaptResolution(dt) {
   let next = pixelRatio;
   if (frameAvg > 1 / 40) next = Math.max(0.6, pixelRatio - 0.15);
   else if (frameAvg < 1 / 57) next = Math.min(maxRatio, pixelRatio + 0.1);
-  if (Math.abs(next - pixelRatio) > 0.01) { pixelRatio = next; renderer.setPixelRatio(pixelRatio); }
+  if (Math.abs(next - pixelRatio) > 0.01) { pixelRatio = next; renderer.setPixelRatio(pixelRatio); post.setPixelRatio(pixelRatio); }
 }
 let prevMach = 0;
 
@@ -602,6 +618,10 @@ function frame(now) {
     if (crashTime === null || clock - crashTime < 2) recorder.record(aircraft, dt);
     updateParticles(dt);
     effects.update(dt);
+    // Contrails above about 26,000 ft (the cold, humid air the exhaust water vapour freezes in).
+    // Sunlit ice crystals: near-white, tinted a little by the sun's colour and dimmed at night.
+    contrailColor.setRGB(0.8, 0.82, 0.86).lerp(sky.env.sunColor, 0.25).multiplyScalar(sky.env.night ? 0.35 : 1.15);
+    contrails.update(dt, aircraft, NOZZLE, kind() === 'jet' && aircraft.altitude > 8000 && !aircraft.onGround, scene, camera, contrailColor);
   }
 
   model.nav = replaying || aircraft.crashed ? null : ilsGuidance(aircraft.pos, aircraft.heading);
@@ -624,7 +644,8 @@ function frame(now) {
     }
   }
   updateAudio(replaying ? { ...aircraft, crashed: true } : aircraft);
-  renderer.render(scene, camera);
+  post.render();
+  flare.draw(camera, sky.env.sunDir, { haze: sky.haze, night: sky.env.night, dt });
   hud.draw(aircraft, camera, cameraMode, paused && !replaying ? 0 : dt, {
     wind: aircraft.wind, ap: autopilot, rings, mission: missions, tanker: kind() === 'jet' ? tanker : null,
     nav: aircraft.crashed ? null : ilsGuidance(aircraft.pos, aircraft.heading),
@@ -643,4 +664,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

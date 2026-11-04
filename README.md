@@ -180,8 +180,9 @@ volume and inverted pitch. They are saved in your browser. Add `?quality=low` to
 | B | Wheel brakes (hold) |
 | [ / ] | Elevator trim nose down / up |
 | Z | Autopilot on / off. While it's on, the pitch and roll keys move its altitude and heading targets |
-| C | Camera: chase, cockpit (3D panel + HUD), tower, flyby |
-| Mouse drag | Look around (double-click to recentre) |
+| F1 / F2 / F3 / F4 | Camera: cockpit (with HUD) / chase / tower / flyby |
+| C | Cycle through the cameras |
+| Mouse drag / wheel | Look around / zoom the chase camera (double-click to reset) |
 | N | Map |
 | V | Instant replay of the last minute |
 | H | Hide / show the instrument panel, readouts and minimap (the F-16 HUD always stays on) |
@@ -222,6 +223,19 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 
 ## Graphics
 
+- **Afterburner:** a ray-marched volumetric plume. It has a hot core, a bluish sheath near the nozzle,
+  a yellow-orange body fading to red, animated turbulence, and shock diamonds that shrink and fade
+  downstream. It partly hides what's behind it, so it reads in daylight too. Its length and definition
+  change with afterburner setting, speed and altitude. The nozzle throat glows hot, and the flame lights
+  the aircraft and ground (strongest at night).
+- **Bloom (HDR post-processing):** hot and bright things glow as they would through a camera lens: the
+  afterburner, sun, lights and sun glints on the water. Low graphics quality turns this off.
+- **Sun lens flare:** a starburst, halo and coloured ghosts. It's hidden when terrain, cloud or haze
+  blocks the sun.
+- **Contrails:** above about 26,000 ft, the F-16 leaves a condensation trail that forms just behind the
+  nozzle and spreads and fades over 45 seconds.
+- **Altitude:** the sky deepens to a dark blue and the haze clears as you climb.
+
 - Image-based lighting: the sky is rendered into an environment map, so paint, metal and glass reflect
   the sky and the ground. It updates when the time of day or the weather changes.
 - Terrain ambient occlusion darkens valleys and gullies, and the mountains get more relief.
@@ -249,6 +263,10 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/model-f16.js` | The F-16 wrapper: cockpit interior, afterburner flame and lights, plus the simple fallback model. Its parts: moving stabilators, flaperons and rudder, speedbrakes, retracting gear, afterburner plume, wingtip AIM-9s, landing light and cockpit. |
 | `js/nav.js` | The ILS: localizer, glideslope and DME for both runway ends. |
 | `js/tanker.js` | The refuelling tanker: racetrack flight path, model, boom, contact envelope, director cues and fuel transfer. |
+| `js/exhaust.js` | The volumetric afterburner plume, nozzle glow and flame light. |
+| `js/post.js` | HDR rendering with bloom, tone mapping and vignette. |
+| `js/flare.js` | Sun lens flare with terrain and cloud occlusion. |
+| `js/trails.js` | High-altitude contrails. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |
 | `js/autopilot.js` | Heading and altitude hold with coordinated turns and stall protection. |
 | `js/terrain.js` | The island heightfield, terrain colours plus a multi-scale detail shader, the water shader (waves, Fresnel sky reflection, sun glint, shallow-water colour, shoreline foam), both airfields (runway markings drawn on a canvas, PAPI, approach and edge lights, hangars, tower, windsocks), villages of instanced houses with lit windows and street lights at night, and instanced trees. Trees and buildings are also registered for collision. |

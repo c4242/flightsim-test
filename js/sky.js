@@ -35,7 +35,7 @@ export function createSky(scene, renderer) {
       horizon: { value: env.horizon }, zenith: { value: env.zenith },
       sunDir: { value: env.sunDir }, sunColor: { value: env.sunColor }, stars: { value: 0 },
       hazeColor: { value: new THREE.Color() }, haze: { value: 0 },
-      groundColor: { value: new THREE.Color(0.12, 0.14, 0.1) }, envMode: { value: 0 },
+      groundColor: { value: new THREE.Color(0.12, 0.14, 0.1) }, envMode: { value: 0 }, sunDisc: { value: 1 },
     },
     vertexShader: /* glsl */`
       varying vec3 vDir;
@@ -46,7 +46,7 @@ export function createSky(scene, renderer) {
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 horizon, zenith, sunDir, sunColor, hazeColor, groundColor;
-      uniform float stars, haze, envMode;
+      uniform float stars, haze, envMode, sunDisc;
       varying vec3 vDir;
       float hash(vec3 p) {
         p = fract(p * 0.3183099 + 0.1);
@@ -61,7 +61,7 @@ export function createSky(scene, renderer) {
         // Warm glow around the sun that hugs the horizon when the sun is low.
         float low = 1.0 - smoothstep(0.0, 0.5, sunDir.y);
         col += sunColor * (pow(s, 8.0) * (0.12 + 0.35 * low) * (1.0 - up * 0.7));
-        col += sunColor * (pow(s, 1200.0) * 6.0 + pow(s, 60.0) * 0.3);
+        col += sunColor * (pow(s, 1200.0) * 6.0 * sunDisc + pow(s, 60.0) * 0.3 * sunDisc);
         if (stars > 0.0 && d.y > 0.0) {
           // Procedural star field: one possible star per cell of a grid around the sky.
           vec3 p = d * 230.0;
@@ -103,6 +103,7 @@ export function createSky(scene, renderer) {
   function updateEnvironment() {
     if (!pmrem) return;
     for (const k of ['horizon', 'zenith', 'sunDir', 'sunColor', 'hazeColor']) envMat.uniforms[k].value.copy(domeMat.uniforms[k].value);
+    envMat.uniforms.sunDisc.value = domeMat.uniforms.sunDisc.value;
     envMat.uniforms.haze.value = domeMat.uniforms.haze.value;
     envMat.uniforms.stars.value = 0;
     // Ground seen from the air: dark green-grey, scaled by the overall light level.
@@ -138,7 +139,7 @@ export function createSky(scene, renderer) {
   let cloudMode = 'scattered';
   // Base (clear-sky) values for the current time of day, blended per frame.
   const base = { horizon: new THREE.Color(), zenith: new THREE.Color(), sun: new THREE.Color(), sunI: 1, hemiI: 1, fog: [3000, 38000], hemiSky: new THREE.Color() };
-  const grey = new THREE.Color(), tmp = new THREE.Color();
+  const grey = new THREE.Color(), tmp = new THREE.Color(), altZenith = new THREE.Color(), altHorizon = new THREE.Color();
 
   function setTimeOfDay(name) {
     const p = PRESETS[name] ?? PRESETS.noon;
@@ -161,6 +162,8 @@ export function createSky(scene, renderer) {
     base.sunI = p.sunI; base.hemiI = p.hemiI; base.fog = p.fog; base.hemiSky.set(p.hemiSky);
     env.night = !!p.night;
     domeMat.uniforms.stars.value = p.night ? 1.2 : 0;
+    // The moon is far dimmer than the sun: keep its disc from blooming into a glare.
+    domeMat.uniforms.sunDisc.value = p.night ? 0.18 : 1;
     envHaze = -1; // regenerate the environment map on the next update
   }
 
@@ -178,6 +181,8 @@ export function createSky(scene, renderer) {
       envHaze = -1;
     },
     get cloudMode() { return cloudMode; },
+    // 0 = clear sky around the camera, 1 = under overcast / in cloud / in fog.
+    get haze() { return domeMat.uniforms.haze.value; },
     update(camera, focus) {
       dome.position.copy(camera.position);
       // Blend lighting, fog and sky for the weather around the camera.
@@ -212,6 +217,14 @@ export function createSky(scene, renderer) {
       domeMat.uniforms.haze.value = haze;
       env.horizon.copy(base.horizon).lerp(tmp, haze);
       env.zenith.copy(base.zenith).lerp(tmp, haze);
+      // Thinner air higher up: a deeper blue sky and far less haze (most of it is in the lowest few km).
+      const alt = smooth(1500, 12000, h) * (1 - haze);
+      if (alt > 0) {
+        env.zenith.lerp(altZenith.copy(base.zenith).multiplyScalar(env.night ? 0.6 : 0.42), alt * 0.85);
+        env.horizon.lerp(altHorizon.copy(base.horizon).lerp(base.zenith, 0.35), alt * 0.6);
+        fogNear += (fogNear + 8000) * alt;
+        fogFar *= 1 + 2.5 * alt;
+      }
       env.sunColor.copy(base.sun).multiplyScalar(1 - 0.85 * haze);
       sun.intensity = base.sunI * (1 - 0.8 * haze);
       hemi.intensity = base.hemiI * (1 + 0.25 * haze);

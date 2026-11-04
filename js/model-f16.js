@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { loadFlightGearF16 } from './model-f16fg.js';
+import { createExhaust } from './exhaust.js';
 import { loadFlightGearCockpit, FG_EYE, FG_VIEW_PITCH, FG_FOV } from './cockpit-fg.js';
 
 const DEG = Math.PI / 180;
@@ -153,6 +154,11 @@ export function createF16Model({ renderer } = {}) {
   exhaustGlow.position.set(0, 0.3, 6.6);
   exhaustGlow.scale.set(2.2, 2.2, 1);
   root.add(exhaustGlow);
+  // Volumetric afterburner plume (replaces the simple cones and glow above, which stay hidden).
+  const exhaust = createExhaust({ nozzleRadius: 0.42 });
+  exhaust.object.position.set(0, 0.3, 6.5);
+  root.add(exhaust.object);
+  flame.visible = core.visible = exhaustGlow.visible = false;
 
   // Speedbrakes either side of the nozzle.
   const brakes = [];
@@ -275,7 +281,7 @@ export function createF16Model({ renderer } = {}) {
 
   // ---------- FlightGear model ----------
   let fg = null;
-  const keep = new Set([cockpit, flame, core, exhaustGlow, landingLight, landingLight.target, landingGlow, beacon]);
+  const keep = new Set([cockpit, exhaust.object, landingLight, landingLight.target, landingGlow, beacon]);
   loadFlightGearF16(renderer).then((m) => {
     fg = m;
     for (const c of root.children) if (!keep.has(c)) c.visible = false;
@@ -283,8 +289,9 @@ export function createF16Model({ renderer } = {}) {
     // Re-fit our cockpit, flame and lights to the real airframe.
     cockpit.position.set(0, -0.08, 0.55);
     eye.set(0, 0.82, -4.2);
-    for (const o of [flame, core]) o.position.set(0, -0.05, 5.6);
-    exhaustGlow.position.set(0, -0.05, 5.75);
+    // Nozzle exit of the GE nozzle on the FlightGear model.
+    exhaust.object.position.set(0, -0.05, 5.32);
+    exhaust.object.scale.setScalar(0.92);
     beacon.position.set(0, 3.15, 5.34);
     landingLight.position.set(0, -1.45, -3.0);
     landingGlow.position.set(0, -1.45, -3.1);
@@ -328,14 +335,12 @@ export function createF16Model({ renderer } = {}) {
         // The landing light is on the nose gear: only with the gear down.
         landingLight.visible = landingGlow.visible = night && (ac.gearDown ?? 1) > 0.9;
       } else updatePrimitive(ac, dt);
-      // Afterburner flame.
-      const ab = ac.abLit ? ac.ab ?? 0 : 0;
-      const flick = 0.9 + Math.sin(t * 60) * 0.06 + Math.sin(t * 37) * 0.04;
-      flame.scale.set(0.9 + ab * 0.2, 0.9 + ab * 0.2, (1.5 + ab * 4) * flick);
-      flameMat.opacity = ab > 0.01 ? 0.35 + ab * 0.45 : 0;
-      core.scale.set(1, 1, (1 + ab * 2.2) * flick);
-      coreMat.opacity = ab > 0.01 ? 0.5 : 0;
-      exhaustGlow.material.opacity = ab > 0.01 ? 0.6 + ab * 0.4 : Math.max(0, ((ac.n2 ?? 0) - 0.9) * 2);
+      // Afterburner plume, nozzle glow and flame light.
+      if (api.camera) {
+        exhaust.update(dt, api.camera, {
+          ab: ac.abLit ? ac.ab ?? 0 : 0, n2: ac.n2 ?? 0, mach: ac.mach ?? 0, altitude: ac.altitude ?? 0, night,
+        });
+      }
       beacon.visible = (t % 1.0) < 0.1;
       if (fgPit && cockpitView) fgPit.update(ac, dt, api.nav ?? null);
       // Cockpit controls.

@@ -9,11 +9,17 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Condensed:wght@500;700&display=swap" />
   <link rel="stylesheet" href="css/style.css" />
   <script type="importmap">
-    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
   </script>
 </head>
 <body>
   <!-- The WebGL canvas is inserted before this by js/main.js -->
+  <canvas id="flare"></canvas>
   <div id="gfx"></div>
   <canvas id="hud"></canvas>
 
