@@ -168,6 +168,45 @@ function placeFlyby() {
   flybyAge = 0;
 }
 
+// ---------- Pilot's head (cockpit view) ----------
+// Six degrees of freedom: the view direction from mouse look, plus the head's position. The head
+// moves on its own when you look far round (you lean and twist in the seat), can be moved by hand
+// (Shift + drag / wheel), and sways on a spring-damper with the accelerations the pilot feels:
+// pushed down under G, thrown sideways in rolls and yaws, forward under braking and on touchdown.
+const head = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), prevVel: new THREE.Vector3(), ok: false };
+const _hf = new THREE.Vector3(), _hT = new THREE.Vector3(), _hq = new THREE.Quaternion();
+function updateHead(dt, ac, look) {
+  if (dt <= 0) return head.pos;
+  // Specific force (what an accelerometer reads) in the body frame, minus the 1 g of level flight.
+  const v = ac.vel ?? ZERO;
+  if (!head.ok) { head.prevVel.copy(v); head.ok = true; }
+  _hf.subVectors(v, head.prevVel).divideScalar(dt).add(_v.set(0, 9.81, 0));
+  head.prevVel.copy(v);
+  _hf.applyQuaternion(_hq.copy(ac.quat).invert());
+  _hf.y -= 9.81;
+  _hf.clampLength(0, 120);
+  // Where the head settles: displaced against the felt force, a few cm per g.
+  _hT.set(-_hf.x * 0.004, -_hf.y * 0.0025, -_hf.z * 0.004);
+  _hT.x = clamp(_hT.x, -0.08, 0.08); _hT.y = clamp(_hT.y, -0.09, 0.03); _hT.z = clamp(_hT.z, -0.08, 0.06);
+  // Leaning to look round: towards the side you look, up a little, and forward when looking down.
+  const yaw = look.yaw, side = -Math.sin(yaw); // positive yaw looks left, so the head moves to -x
+  _hT.x += side * 0.14 * Math.min(1, Math.abs(yaw) / 1.6);
+  _hT.y += Math.min(1, Math.abs(yaw) / 2.2) * 0.05;
+  _hT.z += Math.max(0, -look.pitch) * -0.08 + (Math.abs(yaw) > 1.8 ? 0.05 : 0);
+  _hT.add(look.head);
+  // Spring-damper (about 2 Hz, lightly damped) so jolts give a small bounce.
+  const w = 12.5, zeta = 0.55;
+  const acc = _v.subVectors(_hT, head.pos).multiplyScalar(w * w).addScaledVector(head.vel, -2 * zeta * w);
+  const n = Math.max(1, Math.ceil(dt / 0.01));
+  for (let i = 0; i < n; i++) {
+    head.vel.addScaledVector(acc, dt / n);
+    head.pos.addScaledVector(head.vel, dt / n);
+    acc.subVectors(_hT, head.pos).multiplyScalar(w * w).addScaledVector(head.vel, -2 * zeta * w);
+  }
+  head.pos.x = clamp(head.pos.x, -0.3, 0.3); head.pos.y = clamp(head.pos.y, -0.15, 0.12); head.pos.z = clamp(head.pos.z, -0.3, 0.15);
+  return head.pos;
+}
+
 function updateCamera(dt) {
   const aircraft = subject;
   const look = getLook(dt);
@@ -175,10 +214,13 @@ function updateCamera(dt) {
   lookQuat.setFromEuler(lookEuler);
   let fov = 65;
   model.setCockpitView(cameraMode === 'cockpit');
+  if (cameraMode !== 'cockpit') head.ok = false; // no stale velocity when switching back in
 
   if (cameraMode === 'cockpit') {
-    fov = model.cockpitFov ?? 74;
-    camera.position.copy(_v.copy(model.eye).applyQuaternion(aircraft.quat).add(aircraft.pos));
+    // The mouse wheel zooms the cockpit view (to read a gauge or spot traffic).
+    fov = clamp((model.cockpitFov ?? 74) * Math.min(1, look.zoom), 20, 90);
+    const hp = updateHead(dt, aircraft, look);
+    camera.position.copy(_v.copy(model.eye).add(hp).applyQuaternion(aircraft.quat).add(aircraft.pos));
     cockpitTilt.setFromAxisAngle(_xAxis, model.viewPitch ?? -0.1);
     camera.quaternion.copy(aircraft.quat).multiply(cockpitTilt).multiply(lookQuat);
   } else if (cameraMode === 'tower') {
@@ -318,6 +360,7 @@ function spawn(id) {
   traffic.reset();
   crashTime = null;
   atc.reset();
+  head.ok = false; head.pos.set(0, 0, 0); head.vel.set(0, 0, 0);
   let hint;
   if (id.startsWith('mission:')) {
     const m = MISSIONS.find((x) => x.id === id.slice(8));
@@ -795,4 +838,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { atc, setWet: (w) => { wetness = w; }, lightning, sky, birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { head, updateHead, atc, setWet: (w) => { wetness = w; }, lightning, sky, birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

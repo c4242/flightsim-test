@@ -4,7 +4,7 @@ import { clamp } from './noise.js';
 
 const held = new Set();
 const pressedQueue = [];
-const look = { yaw: 0, pitch: 0, dragging: false, idle: 0, zoom: 1 };
+const look = { yaw: 0, pitch: 0, dragging: false, idle: 0, zoom: 1, head: { x: 0, y: 0, z: 0 } };
 const touch = { active: false, stickX: 0, stickY: 0, stickOn: false, throttle: null, brake: false, rudder: 0 };
 const options = { invertPitch: false, lookSensitivity: 1 };
 
@@ -21,7 +21,8 @@ export const KEYMAP = [
   ['Z', 'Autopilot on / off (stick keys then steer the heading and altitude)'],
   ['F1 / F2 / F3 / F4', 'Camera: cockpit / chase / tower / flyby'],
   ['C', 'Cycle the cameras'],
-  ['Mouse drag / wheel', 'Look around / zoom the chase camera (double-click to reset)'],
+  ['Mouse drag / wheel', 'Look around / zoom (double-click to reset)'],
+  ['Shift + drag / wheel', 'Cockpit: move your head sideways and up / lean forward and back'],
   ['N', 'Map'],
   ['V', 'Instant replay of the last minute (C changes camera)'],
   ['H', 'Hide / show the instrument panel, readouts and minimap (the F-16 HUD always stays on)'],
@@ -51,14 +52,21 @@ export function initInput(canvas) {
   canvas.addEventListener('pointerup', () => { look.dragging = false; look.idle = 0; });
   canvas.addEventListener('pointermove', (e) => {
     if (!look.dragging) return;
+    if (e.shiftKey) {
+      // Head position (m): sideways and up/down, within the canopy.
+      look.head.x = clamp(look.head.x + e.movementX * 0.0012, -0.22, 0.22);
+      look.head.y = clamp(look.head.y - e.movementY * 0.0012, -0.12, 0.1);
+      return;
+    }
     const k = 0.006 * options.lookSensitivity;
     look.yaw = clamp(look.yaw - e.movementX * k, -Math.PI, Math.PI);
     look.pitch = clamp(look.pitch - e.movementY * k, -1.2, 1.2);
   });
-  canvas.addEventListener('dblclick', () => { look.yaw = look.pitch = 0; look.zoom = 1; });
+  canvas.addEventListener('dblclick', () => { look.yaw = look.pitch = 0; look.zoom = 1; look.head.x = look.head.y = look.head.z = 0; });
   // Mouse wheel: move the chase camera closer or further away.
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (e.shiftKey) { look.head.z = clamp(look.head.z + (e.deltaY || e.deltaX) * 0.0004, -0.25, 0.12); return; }
     look.zoom = clamp(look.zoom * Math.exp(e.deltaY * 0.001), 0.35, 4);
   }, { passive: false });
 }

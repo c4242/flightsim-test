@@ -70,6 +70,12 @@ Checked performance from the test scripts:
 | Approach | 13° AoA at ≈150 KCAS | 13° AoA, 140–160 KCAS |
 | Landing roll without drag chute | ≈1,000 m | 760–1,070 m |
 
+**Head movement (6DOF view):** in the cockpit you can look around and move your head.
+- Your head leans and rises when you look far round, as when checking six.
+- Shift + drag and Shift + wheel move it by hand.
+- It sways with what the pilot feels: pushed down under G, sideways in rolls and yaws, and forward
+  under braking. It bounces a little on a hard landing.
+
 **Cockpit:** the cockpit view uses the FlightGear F-16's 3D cockpit:
 - **What's in it:** the instrument panel, ICP keypad, side consoles, throttle, side-stick and seat, inside the
   real fuselage and canopy frame.
@@ -196,7 +202,8 @@ volume and inverted pitch. They are saved in your browser. Add `?quality=low` to
 | Z | Autopilot on / off. While it's on, the pitch and roll keys move its altitude and heading targets |
 | F1 / F2 / F3 / F4 | Camera: cockpit (with HUD) / chase / tower / flyby |
 | C | Cycle through the cameras |
-| Mouse drag / wheel | Look around / zoom the chase camera (double-click to reset) |
+| Mouse drag / wheel | Look around / zoom (chase distance, or the cockpit field of view). Double-click to reset |
+| Shift + drag / wheel | Cockpit: move your head sideways and up or down / lean forward and back |
 | N | Map |
 | V | Instant replay of the last minute |
 | H | Hide / show the instrument panel, readouts and minimap (the F-16 HUD always stays on) |
@@ -321,7 +328,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 
 | File | What it does |
 | --- | --- |
-| `js/aircraft.js` | Shared rigid-body flight model; the aircraft types supply the aerodynamics, engine and control laws. It covers: a rigid body with lift (with stall), drag (parasitic + induced, reduced in ground effect), side force, propeller thrust and slipstream, air density with altitude, control moments, static stability, damping, adverse yaw, wind-relative aerodynamics, and spring-damper landing gear with brakes, nose-wheel steering and grass vs asphalt friction. Also crash and structural-limit detection and landing scoring. Runs at 240 Hz in fixed steps. |
+| `js/aircraft.js` | Shared six-degree-of-freedom rigid-body flight model (position and attitude driven by forces and moments through the inertia); the aircraft types supply the aerodynamics, engine and control laws. It covers: a rigid body with lift (with stall), drag (parasitic + induced, reduced in ground effect), side force, propeller thrust and slipstream, air density with altitude, control moments, static stability, damping, adverse yaw, wind-relative aerodynamics, and spring-damper landing gear with brakes, nose-wheel steering and grass vs asphalt friction. Also crash and structural-limit detection and landing scoring. Runs at 240 Hz in fixed steps. |
 | `js/planes/f16.js` | The F-16: mass and inertia, Mach-dependent aerodynamics, the F110 engine model with spool-up, afterburner and fuel, and the fly-by-wire control laws. |
 | `js/planes/skylark.js` | The light trainer's aerodynamics, propeller engine and direct control surfaces. |
 | `js/atmosphere.js` | International Standard Atmosphere, Mach number and calibrated airspeed. |
