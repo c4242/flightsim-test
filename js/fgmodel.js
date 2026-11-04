@@ -11,7 +11,7 @@
 // Everything is built in the FlightGear frame: x aft, y right, z up, metres.
 
 import * as THREE from 'three';
-import { parseAC } from './acloader.js';
+import { parseAC, fetchTextRetry, assetProgress } from './acloader.js';
 
 const DEG = Math.PI / 180;
 const acToFg = (x, y, z) => [x, -z, y];
@@ -57,7 +57,7 @@ function compileNode(el) {
 // ---------- Loading ----------
 const textCache = new Map();
 async function fetchText(url) {
-  if (!textCache.has(url)) textCache.set(url, fetch(url).then((r) => { if (!r.ok) throw new Error(`${url}: ${r.status}`); return r.text(); }));
+  if (!textCache.has(url)) textCache.set(url, fetchTextRetry(url));
   return textCache.get(url);
 }
 const texCache = new Map();
@@ -168,13 +168,15 @@ async function loadModelFile(url, env, anims, globalNamed) {
 function loadTexture(url, env) {
   if (!url) return Promise.resolve(null);
   if (!texCache.has(url)) {
+    assetProgress.started++;
     texCache.set(url, new Promise((resolve) => {
       new THREE.TextureLoader().load(url, (t) => {
+        assetProgress.done++;
         t.colorSpace = THREE.SRGBColorSpace;
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = env.renderer ? Math.min(8, env.renderer.capabilities.getMaxAnisotropy()) : 4;
         resolve(t);
-      }, undefined, () => { console.warn('FG model: missing texture', url); resolve(null); });
+      }, undefined, () => { console.warn('FG model: missing texture', url); assetProgress.done++; resolve(null); });
     }));
   }
   return texCache.get(url);

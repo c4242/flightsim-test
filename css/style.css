@@ -88,3 +88,9 @@ details summary { cursor: pointer; color: #ffcf6a; font-family: "Saira Condensed
 #gfx { position: fixed; inset: 0; pointer-events: none; }
 
 .credits a { color: #9fc4ea; }
+
+/* Download status of the FlightGear F-16 model and cockpit. */
+#assetStatus { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 50; max-width: min(92vw, 720px);
+  padding: 6px 12px; border-radius: 6px; background: rgba(10, 16, 24, 0.82); color: #cfe6ff; font: 13px/1.35 system-ui, sans-serif;
+  pointer-events: none; text-align: center; }
+#assetStatus.failed { color: #ffb3a6; border: 1px solid rgba(255, 120, 100, 0.6); }

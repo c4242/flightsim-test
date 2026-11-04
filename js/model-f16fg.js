@@ -6,7 +6,7 @@
 // x right, y up, z aft with the origin at the centre of gravity.
 
 import * as THREE from 'three';
-import { parseAC } from './acloader.js';
+import { parseAC, fetchTextRetry, assetProgress } from './acloader.js';
 
 const BASE = 'assets/f16/';
 // Where our centre of gravity sits in the FlightGear model frame (metres).
@@ -24,18 +24,21 @@ const SKIP = new Set(['ExternalFlame', 'InternalFlame', 'FanSpinning', 'FanRHigh
 const COCKPIT_HIDE = ['RadarDomeTop', 'CanopyForwardInside', 'CanopyForwardOutside', 'CanopyBackInside', 'CanopyBackOutside',
   'CanopyFrame', 'CanopyFrameInner', 'Link16Antennas', 'LogoPilotRight', 'FwdFormationLight', 'PitotTube'];
 
-async function fetchText(f) {
-  const r = await fetch(BASE + f);
-  if (!r.ok) throw new Error(`${f}: HTTP ${r.status}`);
-  return r.text();
-}
+const fetchText = (f) => fetchTextRetry(BASE + f);
 
-function loadTexture(loader, f, renderer) {
-  return new Promise((resolve, reject) => loader.load(BASE + f, (t) => {
+// Textures: retried once; a texture that still fails leaves that part untextured rather than
+// losing the whole model.
+function loadTexture(loader, f, renderer, retry = true) {
+  if (retry) assetProgress.started++;
+  return new Promise((resolve) => loader.load(BASE + f, (t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
+    assetProgress.done++;
     resolve(t);
-  }, undefined, reject));
+  }, undefined, () => {
+    if (retry) setTimeout(() => loadTexture(loader, f, renderer, false).then(resolve), 1000);
+    else { console.warn('F-16 model: texture failed to load', f); assetProgress.done++; resolve(null); }
+  }));
 }
 
 export async function loadFlightGearF16(renderer) {

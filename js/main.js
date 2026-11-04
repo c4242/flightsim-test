@@ -29,6 +29,7 @@ import { Rain } from './rain.js';
 import { Birds } from './birds.js';
 import { Lightning } from './lightning.js';
 import { Atc } from './atc.js';
+import { assetProgress } from './acloader.js';
 
 const settings = loadSettings();
 const low = settings.quality === 'low';
@@ -721,7 +722,28 @@ let last = performance.now();
 let panelTimer = 0;
 let clock = 0;
 
+// Show what the F-16 model is doing while it downloads, and say so plainly if it fails.
+const assetStatusEl = document.getElementById('assetStatus');
+let assetStatusText = '';
+function updateAssetStatus() {
+  const st = MODELS.f16.loadStatus;
+  let text = '', failed = false;
+  if (kind() === 'jet' && st !== 'ready') {
+    const files = assetProgress.started ? ` (${assetProgress.done}/${assetProgress.started} files)` : '';
+    if (st === 'loading') text = `Downloading the FlightGear F-16 model${files}… the simple model is shown until it's ready.`;
+    else if (st === 'cockpit') text = `Downloading the FlightGear cockpit${files}…`;
+    else { failed = true; text = `Couldn't load the ${st.slice(8)}. Showing the simple version instead; reload the page to try again.`; }
+  }
+  if (text !== assetStatusText) {
+    assetStatusText = text;
+    assetStatusEl.textContent = text;
+    assetStatusEl.classList.toggle('hidden', !text);
+    assetStatusEl.classList.toggle('failed', failed);
+  }
+}
+
 function frame(now) {
+  updateAssetStatus();
   const rawDt = (now - last) / 1000;
   const dt = Math.min(0.05, rawDt);
   last = now;

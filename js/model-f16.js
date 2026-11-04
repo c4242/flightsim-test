@@ -260,7 +260,9 @@ export function createF16Model({ renderer } = {}) {
   // ---------- FlightGear cockpit (loaded the first time the cockpit view is used) ----------
   const mfdCanvases = [0, 1].map(() => { const c = document.createElement('canvas'); c.width = c.height = 512; return c; });
   let fgPit = null, fgPitLoading = false;
-  const api = { viewPitch: -0.1 };
+  // What the player is seeing, for the on-screen loading indicator:
+  // 'loading', 'cockpit' (exterior ready, cockpit loading), 'ready' or 'failed: <reason>'.
+  const api = { viewPitch: -0.1, loadStatus: 'loading' };
   function loadCockpit() {
     if (fgPit || fgPitLoading || !fg) return;
     fgPitLoading = true;
@@ -276,7 +278,12 @@ export function createF16Model({ renderer } = {}) {
       // (apart from the canopy glass, which only looks right from outside).
       fg.setCockpitView(false);
       fg.setGlassVisible(!cockpitView);
-    }).catch((err) => { fgPitLoading = false; console.warn('FlightGear cockpit not loaded, using the simple cockpit:', err); });
+      api.loadStatus = 'ready';
+    }).catch((err) => {
+      fgPitLoading = false;
+      api.loadStatus = `failed: FlightGear cockpit (${err.message ?? err})`;
+      console.warn('FlightGear cockpit not loaded, using the simple cockpit:', err);
+    });
   }
 
   // ---------- FlightGear model ----------
@@ -299,8 +306,14 @@ export function createF16Model({ renderer } = {}) {
       const sp = light(c, x, y, z, s);
       keep.add(sp);
     }
-    if (cockpitView) { m.setCockpitView(true); loadCockpit(); }
-  }).catch((err) => console.warn('FlightGear F-16 model not loaded, using the simple model:', err));
+    if (cockpitView) m.setCockpitView(true);
+    // Fetch the cockpit straight away too, so it's ready before the first switch to the cockpit view.
+    api.loadStatus = 'cockpit';
+    loadCockpit();
+  }).catch((err) => {
+    api.loadStatus = `failed: FlightGear F-16 model (${err.message ?? err})`;
+    console.warn('FlightGear F-16 model not loaded, using the simple model:', err);
+  });
 
   // defineProperties (not Object.assign) so the getters below stay live.
   return Object.defineProperties(api, Object.getOwnPropertyDescriptors({

@@ -237,8 +237,27 @@ export function parseAC(text, opts) {
   return { root, objects };
 }
 
+// Download progress of the model files (for the loading indicator).
+export const assetProgress = { started: 0, done: 0 };
+
+// fetch() a text file, retrying a couple of times (a single dropped request on a slow or flaky
+// connection shouldn't lose the whole model).
+export async function fetchTextRetry(url, tries = 3) {
+  assetProgress.started++;
+  let err;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url);
+      if (r.ok) { const t = await r.text(); assetProgress.done++; return t; }
+      err = new Error(`${url}: HTTP ${r.status}`);
+      if (r.status === 404) break;
+    } catch (e) { err = new Error(`${url}: ${e.message}`); }
+    await new Promise((res) => setTimeout(res, 800 * (i + 1)));
+  }
+  assetProgress.done++;
+  throw err;
+}
+
 export async function loadAC(url, opts) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to load ${url}: ${res.status}`);
-  return parseAC(await res.text(), opts);
+  return parseAC(await fetchTextRetry(url), opts);
 }
