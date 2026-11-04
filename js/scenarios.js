@@ -26,7 +26,7 @@ export function approachSpawn(id = 'main', end = 0, dist = 4000, opts = {}) {
   const base = {
     x: p.x, y: f.elevation + 1.5 + dist * Math.tan(glide), z: p.z, heading: f.heading + (end ? Math.PI : 0), gamma: -glide,
   };
-  if (jet) return { ...base, speed: 78, pitch: 0.17, throttle: 0.33, fuel: 1600 };
+  if (jet) return { ...base, speed: 78, pitch: 0.17, throttle: 0.22, fuel: 1600 };
   return { ...base, speed: opts.fullFlaps ? 33.5 : 38.5, pitch: -0.01, flaps: opts.fullFlaps ? 2 : 1, throttle: opts.fullFlaps ? 0.2 : 0.14 };
 }
 

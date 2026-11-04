@@ -34,20 +34,36 @@ gear. It stalls at about 50 kt and cruises at about 100–120 kt.
 The F-16 is modelled as realistically as a browser game allows:
 
 - **Mass and inertia:** about 12.3 t with full internal fuel (7,000 lb) and two wingtip AIM-9s.
-  The moments of inertia are the published F-16 values.
+  The moments of inertia, including the roll/yaw product of inertia, are the published F-16 values.
+  The rotation is integrated with the full Euler equations, so inertia coupling and the engine's
+  gyroscopic moment are included.
 - **Engine:** the thrust tables (idle, military power and full afterburner, by altitude and Mach) of the
   F-16 model in Stevens & Lewis, *Aircraft Control and Simulation*, scaled to the installed thrust of the
   F110-GE-129. Core RPM spools up from idle to military power in about 4–5 s, the afterburner takes a
   moment to light, and fuel flow follows thrust: roughly 0.7 lb/lbf/h dry and 1.9 lb/lbf/h in
   afterburner, which is about 60,000 lb/h at full afterburner low down. When the tanks run dry the engine flames out.
-- **Aerodynamics:** the lift slope varies with Mach, strake vortex lift carries it up to about 34° AoA,
-  drag rises transonically (peaking near Mach 1.1) and wave drag applies above that. Gear, flaps and
-  speedbrakes all add drag.
+- **Aerodynamics:** the F-16 aerodynamic database from NASA wind-tunnel tests (NASA TP-1538), as
+  tabulated in Stevens & Lewis.
+  - All six force and moment coefficients come from tables over AoA (−10° to 45°), sideslip (±30°),
+    stabilator, aileron and rudder deflection, plus the rate-damping derivatives.
+  - The aircraft is close to neutrally stable in pitch, as the real relaxed-stability jet is
+    (centre of gravity at 34% of the mean chord).
+  - On top of the low-speed data: the lift slope changes with Mach, the aerodynamic centre moves aft
+    supersonic (much more nose-down trim is needed), drag rises transonically (peaking near Mach 1.1),
+    and wave drag applies above that.
+  - Gear, flaps and speedbrakes all add drag.
 - **Atmosphere:** International Standard Atmosphere, with true Mach number and calibrated airspeed (KCAS).
-- **Flight control system (fly-by-wire):**
+- **Flight control system (fly-by-wire):** the flight control computer moves real control surfaces.
+  - It works out the stabilator, flaperon and rudder positions that give the commanded motion, by
+    nonlinear dynamic inversion on the same aerodynamic model.
+  - The surfaces are driven through actuators with lag and rate limits: stabilator 60°/s and ±25°,
+    flaperons 80°/s and ±21.5°, rudder 120°/s and ±30°.
+  - Control authority therefore runs out naturally at low speed. The 3D model shows where the surfaces
+    actually are.
   - In pitch, the side-stick commands G: neutral is 1 g, full aft 9 g, full forward −3 g. Integral
-    action trims out errors.
-  - The AoA limiter stops at 25°.
+    action trims out errors, and a G limiter prevents overshoot.
+  - The AoA limiter stops at 25°. It anticipates: at low speed, where there's little nose-down
+    authority, it limits the pitch rate so the jet doesn't overshoot into a deep stall.
   - Roll is a rate command of up to about 270°/s, made about the velocity vector, and sideslip is
     suppressed automatically.
   - With the gear handle down, the system switches to takeoff/landing gains: the stick commands pitch
@@ -61,14 +77,15 @@ Checked performance from the test scripts:
 
 | | Model | Real F-16C |
 | --- | --- | --- |
-| Top speed at 36,000 ft, full afterburner | M2.03 | M2.05 |
-| Military power at sea level | M0.94 | ≈M0.92 |
-| Afterburner takeoff roll / liftoff | ≈480 m / ≈180 KCAS | ≈450 m |
-| Peak G, full aft stick | 8.96 | 9 |
-| Maximum roll rate | 269°/s | ≈270°/s |
-| Engine-out glide ratio at 200 KCAS | 6.8 | ≈7–8 |
-| Approach | 13° AoA at ≈150 KCAS | 13° AoA, 140–160 KCAS |
-| Landing roll without drag chute | ≈1,000 m | 760–1,070 m |
+| Military power at sea level | M0.91 | ≈M0.92 |
+| Top speed at 36,000 ft, full afterburner | M2.02 | M2.05 |
+| Afterburner liftoff (full fuel, rotating at 150 kt) | ≈700 m / ≈175 KCAS | ≈450 m |
+| Peak G, full aft stick at 470 KCAS | 8.95 (9.2 at higher speed) | 9 |
+| Peak G at 330 KCAS (lift-limited) | 7.6 | — |
+| Maximum roll rate | 270°/s | ≈270°/s |
+| Engine-out glide ratio at 200 KCAS | 7.8 | ≈7–8 |
+| Approach | 13° AoA at ≈147 KCAS | 13° AoA, 140–160 KCAS |
+| Landing roll without drag chute | ≈730 m | 760–1,070 m |
 
 **Head movement (6DOF view):** in the cockpit you can look around and move your head.
 - Your head leans and rises when you look far round, as when checking six.
@@ -329,6 +346,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | File | What it does |
 | --- | --- |
 | `js/aircraft.js` | Shared six-degree-of-freedom rigid-body flight model (position and attitude driven by forces and moments through the inertia); the aircraft types supply the aerodynamics, engine and control laws. It covers: a rigid body with lift (with stall), drag (parasitic + induced, reduced in ground effect), side force, propeller thrust and slipstream, air density with altitude, control moments, static stability, damping, adverse yaw, wind-relative aerodynamics, and spring-damper landing gear with brakes, nose-wheel steering and grass vs asphalt friction. Also crash and structural-limit detection and landing scoring. Runs at 240 Hz in fixed steps. |
+| `js/planes/f16aero.js` | The F-16 aerodynamic database (NASA TP-1538 / Stevens & Lewis tables) and coefficient build-up. |
 | `js/planes/f16.js` | The F-16: mass and inertia, Mach-dependent aerodynamics, the F110 engine model with spool-up, afterburner and fuel, and the fly-by-wire control laws. |
 | `js/planes/skylark.js` | The light trainer's aerodynamics, propeller engine and direct control surfaces. |
 | `js/atmosphere.js` | International Standard Atmosphere, Mach number and calibrated airspeed. |

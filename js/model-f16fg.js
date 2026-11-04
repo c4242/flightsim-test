@@ -139,12 +139,15 @@ export async function loadFlightGearF16(renderer) {
   function update(ac) {
     const c = ac.controls;
     const gd = ac.gearDown ?? 1;
-    // Control surfaces. The FCS really moves these; this follows the pilot's commands.
-    const pitch = Math.max(-1, Math.min(1, c.elevator + (ac.trim ?? 0))) * 0.4;   // stabilator TE up, rad
-    const rollTail = c.aileron * 0.09;                                               // differential tail
+    // Control surfaces where the flight control computer has put them (the actuator positions of
+    // the flight model, in degrees; replays fall back to the recorded stick).
+    const live = ac.el !== undefined;
+    const pitch = live ? -ac.el / 25 : Math.max(-1, Math.min(1, c.elevator + (ac.trim ?? 0))) * 0.4; // stabilator TE up
+    const rollDeg = live ? -ac.ail : c.aileron * 20;                                 // + = roll right
+    const rollTail = rollDeg / 21.5 * 0.09;                                          // differential tail
     const droop = gd * 20;                                                           // flaperons with gear down
-    const leftTEdown = Math.max(-21.5, Math.min(21.5, droop + c.aileron * 20));
-    const rightTEdown = Math.max(-21.5, Math.min(21.5, droop - c.aileron * 20));
+    const leftTEdown = Math.max(-21.5, Math.min(21.5, droop + rollDeg));
+    const rightTEdown = Math.max(-21.5, Math.min(21.5, droop - rollDeg));
     // Leading-edge flap schedule (Stevens & Lewis): 1.38·α − 9.05·q̄/p + 1.45 degrees, limited to −2…25°.
     const mach = ac.mach ?? 0;
     const lef = ac.onGround ? 0 : Math.max(-2, Math.min(25, 1.38 * (ac.alpha ?? 0) / DEG - 9.05 * 0.7 * mach * mach + 1.45));
@@ -158,7 +161,7 @@ export async function loadFlightGearF16(renderer) {
       'sim/multiplay/generic/float[6]': rightTEdown / 20,
       'sim/multiplay/generic/float[7]': steerNorm,
       'surface-positions/flap-pos-norm': lef,
-      'surface-positions/rudder-pos-norm': c.rudder,
+      'surface-positions/rudder-pos-norm': live ? -ac.rdr / 30 : c.rudder,
       'surface-positions/speedbrake-pos-norm': ac.speedbrake ?? 0,
     };
     for (const a of anims) {

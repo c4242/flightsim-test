@@ -353,11 +353,13 @@ export function createF16Model({ renderer } = {}) {
   function updatePrimitive(ac, dt) {
       const c = ac.controls;
       // Control surfaces follow the stick (the FCS moves them; this is a visual approximation).
-      const pitchCmd = Math.max(-1, Math.min(1, c.elevator + (ac.trim ?? 0)));
-      for (const s of stabs) s.pivot.rotation.x = -pitchCmd * 0.35 + s.side * c.aileron * 0.15;
+      const live = ac.el !== undefined;
+      const pitchCmd = live ? -ac.el / 25 : Math.max(-1, Math.min(1, c.elevator + (ac.trim ?? 0)));
+      const rollCmd = live ? -ac.ail / 21.5 : c.aileron;
+      for (const s of stabs) s.pivot.rotation.x = -pitchCmd * 0.44 + s.side * rollCmd * 0.15;
       const droop = (ac.gearDown ?? 1) * 20 * DEG;
-      for (const f of flaperons) f.hinge.rotation.x = droop - f.side * c.aileron * 0.3;
-      rudHinge.rotation.y = c.rudder * 0.4;
+      for (const f of flaperons) f.hinge.rotation.x = droop - f.side * rollCmd * 0.3;
+      rudHinge.rotation.y = (live ? -ac.rdr / 30 : c.rudder) * 0.52;
       const sb = ac.speedbrake ?? 0;
       for (const b of brakes) b.hinge.rotation.x = b.up * -sb * 60 * DEG * 0.5;
       for (const b of brakes) b.hinge.rotation.y = 0;

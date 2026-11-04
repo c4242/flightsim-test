@@ -12,8 +12,18 @@
 
 import * as THREE from 'three';
 import { clamp, smoothstep, lerp } from '../noise.js';
+import { f16Coefficients, AERO_S, AERO_B, AERO_CBAR } from './f16aero.js';
 
 const G = 9.81;
+// Centre of gravity (fraction of the mean aerodynamic chord): slightly ahead of the 0.35 reference,
+// so the airframe is close to neutrally stable, as the real relaxed-stability F-16.
+const XCG = 0.34;
+// Moments of inertia (kg m²) and the engine's angular momentum at full core speed (kg m²/s),
+// from Stevens & Lewis (9,496 / 55,814 / 63,100 / 982 slug ft² and 160 slug ft²/s).
+const JX = 12875, JY = 75674, JZ = 85552, JXZ = 1331, HENG = 216.9;
+const GAM = JX * JZ - JXZ * JXZ;
+const C1 = ((JY - JZ) * JZ - JXZ * JXZ) / GAM, C2 = ((JX - JY + JZ) * JXZ) / GAM, C3 = JZ / GAM, C4 = JXZ / GAM;
+const C5 = (JZ - JX) / JY, C6 = JXZ / JY, C7 = 1 / JY, C8 = (JX * (JX - JY) + JXZ * JXZ) / GAM, C9 = JX / GAM;
 const LBF = 4.44822;
 const S_REF = 27.87;          // m²
 const EMPTY = 9170;           // kg: operating empty + pilot + two AIM-9s and rails
@@ -72,22 +82,12 @@ function liftSlope(M) {
   return lerp(4.3, sup, smoothstep(0.95, 1.25, M));
 }
 
-// Lift coefficient vs angle of attack: linear, then vortex lift from the strakes up to a peak
-// around 34°, then a gradual post-stall decline.
+// Steady lift coefficient vs angle of attack from the aerodynamic data (no rates, stabilator near
+// trim), with the compressibility factor. Used by the flight control computer's G command.
+const _lc = {};
 export function liftCoefficient(alpha, M) {
-  const a = liftSlope(M);
-  const sign = Math.sign(alpha) || 1;
-  let x = Math.abs(alpha);
-  const neg = alpha < 0;
-  const kneeA = neg ? 0.2 : 0.32, peakA = neg ? 0.35 : 0.6;
-  let cl;
-  if (x <= kneeA) cl = a * x;
-  else if (x <= peakA) cl = a * kneeA + a * 0.55 * (x - kneeA) - a * 0.2 * (x - kneeA) * (x - kneeA);
-  else {
-    const peak = a * kneeA + a * 0.55 * (peakA - kneeA) - a * 0.2 * (peakA - kneeA) ** 2;
-    cl = Math.max(peak - 2.2 * (x - peakA), 1.25 * Math.sin(2 * Math.min(x, Math.PI / 2)));
-  }
-  return sign * cl;
+  const c = f16Coefficients(alpha, 0, -2, 0, 0, 0, 0, 0, 100, XCG, _lc);
+  return c.cx * Math.sin(alpha) - c.cz * (liftSlope(M) / liftSlope(0.3)) * Math.cos(alpha);
 }
 
 // Angle of attack that produces a given lift coefficient (bisection on the real curve up to its peak).
@@ -171,21 +171,35 @@ export const F16 = {
     ac.alphaRef = spawn.onGround ? 0 : 0.22;
     ac.rpm = ac.n2 * 100;
     ac.fcsMode = ac.gearHandle ? 'TO/L' : 'CR';
+    // Control surface positions (degrees, as in the aerodynamic data).
+    ac.el = spawn.onGround ? 0 : -2; ac.ail = 0; ac.rdr = 0;
+    ac._coef = {};
   },
 
   aero(ac, s) {
     const M = s.mach;
+    // Body rates in the book's axes: p roll right, q pitch up, r yaw right.
+    const w = ac.omega, p = -w.z, q = w.x, r = -w.y;
+    const c = f16Coefficients(s.alpha, s.beta, ac.el, ac.ail, ac.rdr, p, q, r, s.V, XCG, ac._coef);
+    // Compressibility (the wind-tunnel data are low-speed): the lift slope rises towards Mach 1
+    // and falls supersonic, the aerodynamic centre moves aft (much more nose-down trim needed
+    // supersonic), and wave drag builds through the transonic region.
+    const kM = liftSlope(M) / liftSlope(0.3);
+    const czM = c.cz * kM;
+    c.cm += czM * 0.07 * smoothstep(0.85, 1.25, M);
+    const ca = Math.cos(s.alpha), sa = Math.sin(s.alpha);
     const tef = ac.gearDown; // trailing-edge flaps droop 20° with the gear handle down
-    const cl = (liftCoefficient(s.alpha, M) + 0.18 * tef * (Math.abs(s.alpha) < 0.5 ? 1 : 0)) * (1 + 0.1 * (1 - s.ge));
-    const sinA = Math.sin(s.alpha);
-    const cd = parasiteDrag(M)
-      + inducedK(M) * s.ge * cl * cl
-      + 0.55 * sinA * sinA
-      + 0.5 * s.beta * s.beta
+    let cl = c.cx * sa - czM * ca + 0.18 * tef * (Math.abs(s.alpha) < 0.5 ? 1 : 0);
+    cl *= 1 + 0.1 * (1 - s.ge);
+    const cd = -c.cx * ca - czM * sa
+      + (parasiteDrag(M) - parasiteDrag(0.3)) + (inducedK(M) - inducedK(0.3)) * cl * cl
+      - 0.09 * (1 - s.ge) * cl * cl                          // ground effect
+      + 0.0025                                               // wingtip missiles and rails
       + 0.016 * ac.gearDown + 0.012 * tef
       + 0.065 * ac.speedbrake
       + (ac.engineFailed || ac.fuel <= 0 ? 0.004 : 0);
-    return { cl, cd, side: -1.0 * s.beta };
+    s.coef = c;
+    return { cl, cd, side: c.cy };
   },
 
   engine(ac, s, dt) {
@@ -222,24 +236,33 @@ export const F16 = {
     return thrust;
   },
 
-  // Fly-by-wire control laws. They produce body angular accelerations, limited by how much
-  // control power the stabilators, flaperons and rudder have at the current dynamic pressure.
+  // Rigid-body rotation (Euler's equations with the roll/yaw product of inertia and the engine's
+  // gyroscopic moment), then the fly-by-wire flight control computer: it works out which
+  // stabilator, aileron and rudder positions give the commanded motion (nonlinear dynamic
+  // inversion on the same aerodynamic model) and drives the surfaces through rate-limited actuators.
   moments(ac, s, dt, angAcc) {
     const c = ac.controls;
-    const w = ac.omega;
-    const qk = s.q / 1000; // kPa
+    const w = ac.omega, p = -w.z, q = w.x, r = -w.y;
+    const co = s.coef;
+    const qS = s.q * AERO_S;
+    const heng = HENG * ac.n2;
+    // --- Aerodynamic moments and the resulting angular accelerations ---
+    const L = qS * AERO_B * co.cl, Mm = qS * AERO_CBAR * co.cm, N = qS * AERO_B * co.cn;
+    const pdot = (C1 * r + C2 * p) * q + C3 * L + C4 * (N + q * heng);
+    const qdot = C5 * p * r - C6 * (p * p - r * r) + C7 * (Mm - heng * r);
+    const rdot = (C8 * p - C2 * r) * q + C4 * L + C9 * (N + q * heng);
+    angAcc.x = qdot; angAcc.z = -pdot; angAcc.y = -rdot;
+
+    // --- Flight control computer ---
     const gearMode = ac.gearHandle || ac.gearDown > 0.01;
     ac.fcsMode = gearMode ? 'TO/L' : 'CR';
     const stick = clamp(c.elevator, -1, 1);
-
-    // --- Pitch ---
     let qCmd;
     if (!gearMode) {
       // G command: neutral stick = 1 g; full aft 9 g, full forward -3 g; trim biases it.
       const nz = clamp(1 + (stick >= 0 ? stick * 8 : stick * 4) + ac.trim * 2, -3, 9);
       // Angle of attack needed for that load factor, then the AoA limiter (25° / -5°).
       const clReq = nz * ac.mass * G / Math.max(200, s.q * S_REF);
-      // Integral action on the G error trims out modelling errors (thrust, gravity, lag).
       const nzErr = nz - s.nz;
       if (Math.abs(nzErr) < 2 && !ac.onGround) ac.nzInt = clamp(ac.nzInt + nzErr * 0.06 * dt, -0.05, 0.05);
       ac.alphaCmd = clamp(alphaForCL(clReq, s.mach) + ac.nzInt, -0.087, 0.436);
@@ -263,31 +286,60 @@ export const F16 = {
       ac.alphaCmd = ac.alphaRef;
       ac.nzInt = 0;
     }
-    const pitchAuth = clamp(0.55 * qk, 0.05, 9);
-    angAcc.x = clamp(10 * (qCmd - w.x), -pitchAuth, pitchAuth)
-      - 0.06 * qk * Math.sin(s.alpha - 0.05);             // weak natural stability (relaxed static stability)
-
-    // --- Roll and yaw: roll-rate command about the velocity vector, sideslip suppressed ---
+    // AoA limiter lead: never command a pitch rate the stabilator couldn't stop before the limit.
+    // At low speed there is little nose-down authority, so the jet must approach the limit slowly.
+    if (!ac.onGround) {
+      const decel = Math.max(0.15, qS * AERO_CBAR * 0.09 / JY);
+      const lim = gearMode ? 0.35 : 0.436;
+      qCmd = Math.min(qCmd, s.gammaDot + Math.sqrt(2 * decel * Math.max(0, lim - s.alpha)) - Math.max(0, s.alpha - lim) * 3);
+    }
+    // G limiter: ease off the pitch rate as the load factor nears +9 / -3, so fast pulls don't overshoot.
+    if (!gearMode && !ac.onGround) {
+      const up = 9 - s.nz, dn = s.nz + 3;
+      if (up < 2) qCmd = Math.min(qCmd, s.gammaDot + up * 0.09);
+      if (dn < 1.5) qCmd = Math.max(qCmd, s.gammaDot - dn * 0.05);
+    }
+    // Roll rate about the velocity vector (270°/s clean), with sideslip suppressed.
     const a = clamp(c.aileron, -1, 1);
     const shaped = 0.35 * a + 0.65 * a * Math.abs(a);
-    let pMax = gearMode ? 2.0 : 4.7;                       // 270°/s clean
+    const qk = s.q / 1000;
+    let pMax = gearMode ? 2.0 : 4.7;
     pMax *= clamp(qk / 8, 0.2, 1) * (1 - clamp((s.alpha - 0.26) / 0.3, 0, 0.7));
-    const p = shaped * pMax;
-    const ca = Math.cos(clamp(s.alpha, -0.5, 0.6)), sa = Math.sin(clamp(s.alpha, -0.5, 0.6));
-    const rollDes = -p * ca;                               // body z (roll left positive)
-    let yawDes = -p * sa;                                  // body y (yaw left positive)
-    yawDes += -2.5 * s.beta;                               // sideslip feedback (turn coordination)
-    yawDes += -c.rudder * 0.35 * clamp(qk / 5, 0, 1);       // pedals
-    const rollAuth = clamp(1.6 * qk, 0.3, 25);
-    const yawAuth = clamp(0.3 * qk, 0.1, 4);
-    angAcc.z = clamp(12 * (rollDes - w.z), -rollAuth, rollAuth);
-    angAcc.y = clamp(5 * (yawDes - w.y), -yawAuth, yawAuth) - 0.08 * qk * s.beta;
-    // Above the AoA limit (e.g. a stall at very low speed) the aircraft wallows and buffets.
-    if (s.alpha > 0.5 && !ac.onGround) {
-      const d = Math.min(1, (s.alpha - 0.5) * 4);
-      angAcc.z += d * qk * (Math.sin(ac.time * 5.3) * 0.8);
-      angAcc.y += d * qk * Math.sin(ac.time * 3.1) * 0.3;
+    const ps = shaped * pMax;
+    const al = clamp(s.alpha, -0.5, 0.6);
+    const pCmd = ps * Math.cos(al);
+    const rCmd = ps * Math.sin(al) + 2.5 * s.beta + c.rudder * 0.35 * clamp(qk / 5, 0, 1);
+
+    let elCmd, ailCmd, rdrCmd;
+    if (qS < 300) {
+      // Next to no airflow: the surfaces just follow the stick and pedals.
+      elCmd = -stick * 25; ailCmd = -a * 21.5; rdrCmd = -c.rudder * 30;
+    } else {
+      // Desired angular accelerations, then the moments (and coefficients) that produce them
+      // (bounded so a large error never asks for more than the surfaces can deliver smoothly).
+      const qdD = clamp(6 * (qCmd - q), -2, 2), pdD = clamp(10 * (pCmd - p), -12, 12), rdD = clamp(5 * (rCmd - r), -2, 2);
+      const mReq = (qdD - C5 * p * r + C6 * (p * p - r * r)) / C7 + heng * r;
+      const A = pdD - (C1 * r + C2 * p) * q, B = rdD - (C8 * p - C2 * r) * q;
+      const lReq = (C9 * A - C4 * B) / (C3 * C9 - C4 * C4);
+      const nReq = (C3 * B - C4 * A) / (C3 * C9 - C4 * C4) - q * heng;
+      const dCm = mReq / (qS * AERO_CBAR) - co.cm;
+      const dCl = lReq / (qS * AERO_B) - co.cl, dCn = nReq / (qS * AERO_B) - co.cn;
+      elCmd = ac.el + dCm / Math.min(co.cmEl, -0.003);
+      const det = co.clAil * co.cnRdr - co.clRdr * co.cnAil;
+      if (Math.abs(det) > 1e-7) {
+        ailCmd = ac.ail + (dCl * co.cnRdr - co.clRdr * dCn) / det;
+        rdrCmd = ac.rdr + (co.clAil * dCn - dCl * co.cnAil) / det;
+      } else { ailCmd = ac.ail; rdrCmd = ac.rdr; }
     }
+    // Actuators: first-order lag with rate and travel limits (stabilator 60°/s, ±25°;
+    // flaperons 80°/s, ±21.5°; rudder 120°/s, ±30°).
+    const act = (pos, cmd, lim, rate) => {
+      const v = clamp((clamp(cmd, -lim, lim) - pos) / 0.0495, -rate, rate);
+      return pos + v * dt;
+    };
+    ac.el = act(ac.el, elCmd, 25, 60);
+    ac.ail = act(ac.ail, ailCmd, 21.5, 80);
+    ac.rdr = act(ac.rdr, rdrCmd, 30, 120);
   },
 
   stallWarning(ac) {
