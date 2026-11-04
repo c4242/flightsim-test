@@ -286,8 +286,12 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
   - Drops on the windscreen in the cockpit view that bend the view behind them. They trickle down
     when you're slow and the airflow streaks them back at speed.
   - The sound of rain.
-  - A wet runway: braking friction drops by about half, so the F-16 needs about 1,260 m instead of
-    770 m to stop from 136 kt.
+  - A wet runway: after a minute or so of rain the tarmac darkens and turns glossy, reflecting the sky.
+    Braking friction then drops by about half, so the F-16 needs about 1,260 m instead of 770 m to stop
+    from 136 kt. It takes a few minutes to dry out after the rain stops.
+  - Lightning in the heaviest rain: a branching bolt from the cloud base to the ground a few
+    kilometres away, a flash that lights up the sky and cloud, and thunder after the sound delay (about
+    3 s per kilometre): a sharp crack close by, a long low roll far away.
 - **Altitude:** the sky deepens to a dark blue and the haze clears as you climb.
 
 - Image-based lighting: the sky is rendered into an environment map, so paint, metal and glass reflect
@@ -324,6 +328,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/trails.js` | High-altitude contrails. |
 | `js/terrain-detail.js` | The detailed terrain patch around the camera, with its heights computed on the GPU. |
 | `js/birds.js` | Flocks of birds and bird strikes. |
+| `js/lightning.js` | Lightning strikes in heavy rain: the bolt and the sky flash. |
 | `js/cloudshadow.js` | Shared cumulus cover map and the shader function that shades sunlight under clouds. |
 | `js/rain.js` | Falling rain streaks around the camera. |
 | `js/weather.js` | Prevailing wind with a boundary-layer profile, slow gusts and veer, and turbulence that grows near the ground and over rough terrain. |

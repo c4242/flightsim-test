@@ -240,3 +240,28 @@ export function playCrash() {
   src.connect(f).connect(g).connect(master);
   src.start();
 }
+
+// Thunder from a strike `dist` metres away, arriving after the sound's travel time: a sharp crack
+// close by, a long low rolling rumble far away.
+export function playThunder(dist) {
+  if (!ctx) return;
+  const delay = dist / 343;
+  const near = Math.max(0, 1 - dist / 4000);
+  const len = 3 + dist / 1500;
+  const t = ctx.currentTime + delay;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(len + 0.5);
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.setValueAtTime(180 + near * 1400, t);
+  f.frequency.exponentialRampToValueAtTime(90, t + len);
+  const g = ctx.createGain();
+  const level = Math.min(1.2, 2200 / (dist + 800));
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(level * (0.6 + near), t + 0.02 + (1 - near) * 0.4);
+  // Rolling: a few swells as echoes from the cloud and terrain arrive.
+  for (let i = 1; i <= 3; i++) g.gain.linearRampToValueAtTime(level * (0.5 + Math.random() * 0.4) / i, t + len * i / 4);
+  g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  src.connect(f).connect(g).connect(master);
+  src.start(t);
+}

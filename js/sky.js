@@ -163,6 +163,8 @@ export function createSky(scene, renderer) {
     }
   }
   let cloudMode = 'scattered';
+  let flash = 0;
+  const flashColor = new THREE.Color(1.5, 1.55, 2.0);
   // Base (clear-sky) values for the current time of day, blended per frame.
   const base = { horizon: new THREE.Color(), zenith: new THREE.Color(), sun: new THREE.Color(), sunI: 1, hemiI: 1, fog: [3000, 38000], hemiSky: new THREE.Color() };
   const grey = new THREE.Color(), tmp = new THREE.Color(), altZenith = new THREE.Color(), altHorizon = new THREE.Color();
@@ -215,6 +217,7 @@ export function createSky(scene, renderer) {
     get cloudLayer() { return LAYERS[cloudMode] ?? null; },
     // Skip ahead through the changing-weather cycle (seconds).
     advanceWeather(sec) { wxTime += sec; },
+    setFlash(f) { flash = f; },
     // 0 = clear sky around the camera, 1 = under overcast / in cloud / in fog.
     get haze() { return domeMat.uniforms.haze.value; },
     // Cumulus density at the camera (0 outside, 1 deep in a cloud).
@@ -283,6 +286,13 @@ export function createSky(scene, renderer) {
       env.sunColor.copy(base.sun).multiplyScalar(1 - 0.85 * haze);
       sun.intensity = base.sunI * (1 - 0.8 * haze);
       hemi.intensity = base.hemiI * (1 + 0.25 * haze);
+      // Lightning: the whole sky and cloud base light up blue-white for an instant.
+      if (flash > 0.001) {
+        hemi.intensity += flash * 2.5;
+        env.horizon.lerp(flashColor, Math.min(0.4, flash * 0.3));
+        env.zenith.lerp(flashColor, Math.min(0.3, flash * 0.25));
+        deckBottom.material.color.lerp(flashColor, Math.min(0.6, flash * 0.45));
+      }
       scene.fog.color.copy(env.horizon);
       scene.background.copy(env.horizon);
       scene.fog.near = fogNear;

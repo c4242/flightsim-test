@@ -9,7 +9,7 @@ import { SKYLARK } from './planes/skylark.js';
 import { F16 } from './planes/f16.js';
 import { initInput, initTouch, updateControls, consumePresses, getLook, KEYMAP, setInputOptions } from './input.js';
 import { createHud } from './hud.js';
-import { startAudio, updateAudio, toggleMute, setPaused, playThump, playCrash, playChime, setVolume, playBoom, setRain } from './audio.js';
+import { startAudio, updateAudio, toggleMute, setPaused, playThump, playCrash, playChime, setVolume, playBoom, setRain, playThunder } from './audio.js';
 import { ilsGuidance } from './nav.js';
 import { Tanker } from './tanker.js';
 import { Weather, WIND_LEVELS } from './weather.js';
@@ -27,6 +27,7 @@ import { createFlare } from './flare.js';
 import { Contrails } from './trails.js';
 import { Rain } from './rain.js';
 import { Birds } from './birds.js';
+import { Lightning } from './lightning.js';
 
 const settings = loadSettings();
 const low = settings.quality === 'low';
@@ -102,6 +103,7 @@ const tanker = new Tanker(scene);
 const contrails = new Contrails(scene);
 const rain = new Rain(scene);
 const birds = new Birds(scene);
+const lightning = new Lightning(scene);
 const NOZZLE = [new THREE.Vector3(0, -0.05, 5.6)];
 const contrailColor = new THREE.Color();
 missions.ctx = { tanker };
@@ -609,14 +611,23 @@ function updateHeatShimmer(dt) {
 
 // ---------- Rain ----------
 // Heaviest below the cloud base, lighter inside the cloud, none above it.
-let glassMist = 0, showerOn = false; // droplets collected flying through cloud; they blow off over a few seconds
+let glassMist = 0, showerOn = false, wetness = 0; // droplets collected flying through cloud; they blow off over a few seconds
 function updateRain(dt) {
   const mist = sky.inCloud * 0.4;
   glassMist = mist > glassMist ? glassMist + (mist - glassMist) * Math.min(1, dt * 3) : glassMist * Math.exp(-dt / 4);
-  weather.rain = sky.raining;
   weather.shower = sky.rain;
   const h = camera.position.y;
   const layer = sky.cloudLayer;
+  // Runways get wet over a minute or so of rain and take a few minutes to dry. Braking suffers
+  // once there's standing water.
+  wetness = sky.rain > 0.3 ? Math.min(1, wetness + dt / 60) : Math.max(0, wetness - dt / 240);
+  weather.rain = wetness > 0.4;
+  world.setWet(wetness);
+  // Lightning in the heaviest rain under a solid deck; thunder follows at the speed of sound.
+  const storm = layer ? sky.rain * sky.weatherState.deck : 0;
+  const strike = lightning.update(dt, camera, storm, layer ? layer[0] : 400);
+  if (strike) playThunder(strike.dist);
+  sky.setFlash(lightning.flash);
   const amount = sky.rain > 0.01 && layer ? sky.rain * (h < layer[0] ? 1 : h < layer[1] ? 0.5 : 0) : 0;
   // Announce showers arriving and passing when the weather is changing.
   if (sky.cloudMode === 'variable' && !replaying) {
@@ -755,4 +766,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { sky, birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { setWet: (w) => { wetness = w; }, lightning, sky, birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

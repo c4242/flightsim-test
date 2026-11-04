@@ -647,6 +647,23 @@ const floodMat = (() => {
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
 })();
 
+// Tarmac that can be wet: dry it's matte (like the rest of the ground); wet it darkens and turns
+// glossy, reflecting the sky and the sun.
+const wetMats = [];
+function wettable(mat) {
+  mat.roughness = 1; mat.metalness = 0; mat.envMapIntensity = 0;
+  mat.userData.dryColor = mat.color.clone();
+  wetMats.push(mat);
+  return mat;
+}
+function setWet(w) {
+  for (const m of wetMats) {
+    m.roughness = 1 - 0.78 * w;
+    m.envMapIntensity = 1.0 * w;
+    m.color.copy(m.userData.dryColor).multiplyScalar(1 - 0.5 * w);
+  }
+}
+
 function buildAirfield(renderer, f, lights, papis, windsocks, nightLights, AL) {
   const group = new THREE.Group();
   group.position.set(f.x, 0, f.z);
@@ -655,16 +672,16 @@ function buildAirfield(renderer, f, lights, papis, windsocks, nightLights, AL) {
   // In the group's local frame, the runway heading points to -Z and +X is to its right.
 
   const geo = new THREE.PlaneGeometry(f.width, f.length).rotateX(-Math.PI / 2);
-  const rw = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+  const rw = new THREE.Mesh(geo, wettable(new THREE.MeshStandardMaterial({
     map: runwayTexture(renderer, f), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-  }));
+  })));
   rw.position.y = E + 0.02;
   rw.receiveShadow = true;
   group.add(rw);
 
-  const asphalt = new THREE.MeshLambertMaterial({
+  const asphalt = wettable(new THREE.MeshStandardMaterial({
     color: 0x4a4c4f, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-  });
+  }));
   const flat = (w, d, x, z) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), asphalt);
     m.position.set(x, E + 0.01, z);
@@ -1311,6 +1328,7 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
   const _v = new THREE.Vector3();
   return {
     // lightsOn: night or poor visibility (airports switch their lights on in cloud, rain and fog).
+    setWet,
     update(t, camera, wind, lightsOn = env.night) {
       sea.update(t);
       detail.update(camera);
