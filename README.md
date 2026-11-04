@@ -289,6 +289,9 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
   - A wet runway: after a minute or so of rain the tarmac darkens and turns glossy, reflecting the sky.
     Braking friction then drops by about half, so the F-16 needs about 1,260 m instead of 770 m to stop
     from 136 kt. It takes a few minutes to dry out after the rain stops.
+  - On a wet runway the wheels throw up spray that hangs behind you, and at night the runway lights
+    reflect in the tarmac as long streaks.
+  - Wingtip and strake vapour appear at lower G in rain and cloud, where the air is saturated.
   - Lightning in the heaviest rain: a branching bolt from the cloud base to the ground a few
     kilometres away, a flash that lights up the sky and cloud, and thunder after the sound delay (about
     3 s per kilometre): a sharp crack close by, a long low roll far away.

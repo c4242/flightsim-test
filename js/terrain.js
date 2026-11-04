@@ -1190,6 +1190,66 @@ function buildAirportLights(list) {
   };
 }
 
+// Reflections of the runway lights in a wet runway: a streak on the tarmac under each light,
+// stretching towards the viewer (as a mirror-smooth but rippled surface smears a reflection).
+function buildWetReflections(list) {
+  // Lights on or right beside a runway (the edge lights stand 2 m off the tarmac).
+  const fieldOf = (x, z) => AIRFIELDS.find((f) => { const { along, across } = fieldLocal(f, x, z);
+    return Math.abs(along) <= f.length / 2 + 3 && Math.abs(across) <= f.width / 2 + 3; });
+  const lights = list.filter((l) => l[7] < 0.5 && fieldOf(l[0], l[2]));
+  const n = lights.length;
+  const geo = new THREE.InstancedBufferGeometry();
+  // x: -1..1 across, y: 0 at the light .. 1 at the near end.
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, 0, 0, 1, 0, 0, 1, 1, 0, -1, 1, 0], 3));
+  geo.setIndex([0, 1, 2, 0, 2, 3]);
+  const pos = new Float32Array(n * 4), col = new Float32Array(n * 3);
+  lights.forEach((l, i) => {
+    const f = fieldOf(l[0], l[2]);
+    pos.set([l[0], f.elevation + 0.06, l[2], l[6]], i * 4);
+    col.set(l.slice(3, 6), i * 3);
+  });
+  geo.setAttribute('aLight', new THREE.InstancedBufferAttribute(pos, 4));
+  geo.setAttribute('aColor', new THREE.InstancedBufferAttribute(col, 3));
+  geo.instanceCount = n;
+  const uniforms = { uWet: { value: 0 }, uNight: { value: 1 } };
+  const mat = new THREE.ShaderMaterial({
+    uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+    vertexShader: /* glsl */`
+      attribute vec4 aLight;   // ground position under the light, size
+      attribute vec3 aColor;
+      varying vec3 vCol;
+      varying vec2 vUv;
+      void main() {
+        vec3 p = aLight.xyz;
+        vec2 toCam = cameraPosition.xz - p.xz;
+        float d = length(toCam);
+        vec2 dir = toCam / max(d, 1.0);
+        vec2 side = vec2(-dir.y, dir.x);
+        // Longer streaks the more grazing the view; width about the light's apparent size.
+        float h = max(cameraPosition.y - p.y, 1.0);
+        float len = min(d * 0.6, 4.0 + d * d / (h * 60.0) );
+        float w = max(0.35, d * 0.0025) * aLight.w;
+        vec3 world = vec3(p.x, p.y, p.z) + vec3(side.x, 0.0, side.y) * position.x * w + vec3(dir.x, 0.0, dir.y) * position.y * len;
+        vUv = position.xy;
+        vCol = aColor;
+        gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform float uWet, uNight;
+      varying vec3 vCol;
+      varying vec2 vUv;
+      void main() {
+        float a = (1.0 - vUv.x * vUv.x) * pow(1.0 - vUv.y, 1.5) * smoothstep(0.0, 0.08, vUv.y + 0.04);
+        gl_FragColor = vec4(vCol * a * uWet * mix(0.2, 1.2, uNight), 1.0);
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  return { mesh, uniforms };
+}
+
 // Boulders and scree on steep or high ground: low-poly rocks, irregularly scaled and tilted,
 // half-buried in the slope. Solid for collisions.
 function buildRocks(maxRocks) {
@@ -1307,6 +1367,9 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
   for (const f of AIRFIELDS) scene.add(buildAirfield(renderer, f, lights, papis, windsocks, nightLights, AL));
   const airportLights = buildAirportLights(AL);
   scene.add(airportLights.points);
+  const reflections = buildWetReflections(AL);
+  scene.add(reflections.mesh);
+  let wet = 0;
   scene.add(buildVillages(nightLights));
   scene.add(buildRoads(nightLights));
   scene.add(buildTrees(quality === 'low' ? 3500 : 10000));
@@ -1328,8 +1391,11 @@ export function buildWorld(scene, renderer, env, quality = 'high') {
   const _v = new THREE.Vector3();
   return {
     // lightsOn: night or poor visibility (airports switch their lights on in cloud, rain and fog).
-    setWet,
+    setWet(w) { wet = w; setWet(w); },
     update(t, camera, wind, lightsOn = env.night) {
+      reflections.mesh.visible = lightsOn && wet > 0.05;
+      reflections.uniforms.uWet.value = wet;
+      reflections.uniforms.uNight.value = env.night ? 1 : 0;
       sea.update(t);
       detail.update(camera);
       nightPoints.visible = env.night;

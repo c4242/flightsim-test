@@ -527,8 +527,25 @@ function updateParticles(dt) {
   if (aircraft.onGround && aircraft.speed > 6 && !runwayAt(aircraft.pos.x, aircraft.pos.z) && Math.random() < dt * 25) {
     effects.dust(gearWorld(Math.random() < 0.5 ? 1 : 2));
   }
+  // Spray thrown up by the wheels rolling fast on a wet runway: a rooster tail behind each main
+  // wheel that hangs in the air and drifts.
+  if (aircraft.onGround && wetness > 0.2 && aircraft.speed > 12 && runwayAt(aircraft.pos.x, aircraft.pos.z)) {
+    const k = Math.min(1, (aircraft.speed - 12) / 50) * wetness;
+    for (const i of [1, 2]) {
+      for (let e = 0, n = Math.min(3, Math.round(dt * 70 * k + Math.random())); e < n; e++) {
+        _v.copy(gearWorld(i));
+        _v.y += 0.2;
+        // Thrown up and back, keeping some of the aircraft's speed, then hanging in the air.
+        _smokeV.copy(aircraft.vel).multiplyScalar(0.35 + Math.random() * 0.2)
+          .add(new THREE.Vector3((Math.random() - 0.5) * 3, 1 + Math.random() * 2.5, (Math.random() - 0.5) * 3));
+        effects.emit(_v, _smokeV, { color: 0xdfe3e8, life: 0.9 + Math.random() * 0.8, size0: 0.6, size1: 2.5 + aircraft.speed / 20,
+          alpha: 0.32 * k, drag: 2.2 });
+      }
+    }
+  }
   // Wingtip vapour when pulling hard in humid air.
-  if (!aircraft.onGround && aircraft.gLoad > 3 && aircraft.speed > 45) {
+  // Lower threshold in very humid air (rain, cloud).
+  if (!aircraft.onGround && aircraft.gLoad > (sky.rain > 0.3 || sky.inCloud > 0.1 ? 2 : 3) && aircraft.speed > 45) {
     const tip = kind() === 'jet' ? 4.98 : 5.4;
     for (const sx of [-tip, tip]) {
       _v.set(sx, -0.1, 0.4).applyQuaternion(aircraft.quat).add(aircraft.pos);
