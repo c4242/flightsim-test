@@ -100,7 +100,8 @@ Skyhaven's runway is 2,400 m so the F-16 can operate from it. Eastfield (850 m) 
 
 - **Clouds** (Settings → Clouds):
   - **Clear.**
-  - **Scattered:** cumulus, with their shadows drifting over the ground. You can fly into them: the
+  - **Scattered:** cumulus that drift with the wind (faster than the surface wind, as it is at their
+    height), with their shadows moving over the ground. You can fly into them: the
     view whites out, the air gets bumpy with a gentle updraft, and in the cockpit the windscreen mists
     with droplets that blow off once you're out.
   - **Overcast:** a solid deck with its base at about 1,500 ft. Below it the sky is grey and the light is
@@ -125,6 +126,13 @@ Skyhaven's runway is 2,400 m so the F-16 can operate from it. Eastfield (850 m) 
   - The boom operator then makes contact and fuel flows at about 1,000 lb/min.
   - The HUD shows the director cues (UP/DOWN, FWD/AFT, LEFT/RIGHT). Leaving the limits disconnects you,
     and hitting the tanker is a crash.
+- **Tower radio** (Settings → Tower radio: voice and text, text only, or off): the tower calls you with
+  the live wind and the runway in use.
+  - "Cleared for takeoff" when you line up on a runway.
+  - "Cleared to land" when you're established on final (within about 5 NM, near the centreline, below
+    3,000 ft above the field).
+  - "Vacate the runway when able" after you've slowed down from landing.
+  - The voice uses your browser's speech synthesis; the calls are also shown as text.
 - **Sonic boom:** heard from the outside cameras when the jet accelerates through Mach 1.
 - **Adaptive resolution:** the render resolution drops automatically when the frame rate falls below
   about 40 fps, and comes back up when there is headroom.
@@ -169,7 +177,7 @@ flight. C switches between the chase, tower and flyby cameras, and V or Esc retu
 
 The pause menu has settings for time of day (morning, noon, evening, or night with stars, moonlight, runway and
 village lights and the aircraft's landing light), wind (calm, light, moderate, strong),
-graphics quality (high or low; low turns off shadows and thins the forests, and is the default on touch devices),
+the tower radio, graphics quality (high or low; low turns off shadows and thins the forests, and is the default on touch devices),
 volume and inverted pitch. They are saved in your browser. Add `?quality=low` to the URL to force low quality.
 
 ## Controls
@@ -331,6 +339,7 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
 | `js/trails.js` | High-altitude contrails. |
 | `js/terrain-detail.js` | The detailed terrain patch around the camera, with its heights computed on the GPU. |
 | `js/birds.js` | Flocks of birds and bird strikes. |
+| `js/atc.js` | Tower radio: takeoff, landing and vacate calls, spoken and as text. |
 | `js/lightning.js` | Lightning strikes in heavy rain: the bolt and the sky flash. |
 | `js/cloudshadow.js` | Shared cumulus cover map and the shader function that shades sunlight under clouds. |
 | `js/rain.js` | Falling rain streaks around the camera. |

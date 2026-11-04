@@ -9,6 +9,7 @@ export const DEFAULTS = {
   timeOfDay: 'noon',
   wind: 'light',
   clouds: 'scattered',
+  atc: 'voice',
   invertPitch: false,
   volume: 0.5,
   lookSensitivity: 1,

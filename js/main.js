@@ -28,6 +28,7 @@ import { Contrails } from './trails.js';
 import { Rain } from './rain.js';
 import { Birds } from './birds.js';
 import { Lightning } from './lightning.js';
+import { Atc } from './atc.js';
 
 const settings = loadSettings();
 const low = settings.quality === 'low';
@@ -113,6 +114,8 @@ applyTime(settings.timeOfDay);
 sky.setClouds(settings.clouds);
 
 const hud = createHud(document.getElementById('hud'));
+const atc = new Atc(hud);
+atc.enabled = settings.atc === 'voice';
 const flare = createFlare(document.getElementById('flare'));
 initInput(renderer.domElement);
 setInputOptions({ invertPitch: settings.invertPitch, lookSensitivity: settings.lookSensitivity });
@@ -267,6 +270,11 @@ fillSelect('setWind', Object.keys(WIND_LEVELS), settings.wind).addEventListener(
   settings.wind = e.target.value; saveSettings(settings);
   if (!missions.mission) weather.set(settings.wind);
 });
+const ATC_LABELS = { voice: 'Voice and text', text: 'Text only', off: 'Off' };
+fillSelect('setAtc', Object.keys(ATC_LABELS), settings.atc, (v) => ATC_LABELS[v]).addEventListener('change', (e) => {
+  settings.atc = e.target.value; saveSettings(settings);
+  atc.enabled = settings.atc === 'voice';
+});
 fillSelect('setQuality', ['high', 'low'], settings.quality).addEventListener('change', (e) => {
   settings.quality = e.target.value; saveSettings(settings); location.reload();
 });
@@ -282,6 +290,7 @@ function showMenu(show) {
   menu.classList.toggle('hidden', !show);
   document.getElementById('resume').classList.toggle('hidden', !started || aircraft.crashed || missions.state === 'complete');
   setPaused(show);
+  if (show) window.speechSynthesis?.cancel();
 }
 
 function showResult({ title, text, color = '#ff6a4d', stars = null }) {
@@ -308,6 +317,7 @@ function spawn(id) {
   recorder.clear();
   traffic.reset();
   crashTime = null;
+  atc.reset();
   let hint;
   if (id.startsWith('mission:')) {
     const m = MISSIONS.find((x) => x.id === id.slice(8));
@@ -724,6 +734,7 @@ function frame(now) {
     prevMach = aircraft.mach;
     handleEvents();
     handleMission(dt);
+    if (settings.atc !== 'off') atc.update(dt, aircraft, weather, kind() === 'jet');
     const r = rings.update(aircraft, dt);
     if (r?.type === 'ring') { playChime([880, 1320], 0.1); hud.message(`Ring ${r.index}/${r.total}`, '#3dff7a', 1.5); }
     if (r?.type === 'finish') {
@@ -746,6 +757,7 @@ function frame(now) {
   model.object.quaternion.copy(subject.quat);
   model.update(subject, paused && !replaying ? 0 : dt);
   updateCamera(paused && !replaying ? 0 : dt);
+  sky.setWind(weather.surfaceWind);
   sky.update(camera, subject.pos, paused && !replaying ? 0 : dt);
   world.update(clock, camera, weather.surfaceWind, sky.env.night || sky.haze > 0.3 || sky.weatherState.deck > 0.6);
   if (cameraMode === 'cockpit' && !replaying) {
@@ -783,4 +795,4 @@ showMenu(true);
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.sim = { setWet: (w) => { wetness = w; }, lightning, sky, birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };
+window.sim = { atc, setWet: (w) => { wetness = w; }, lightning, sky, birds, updateParticles, effects, post, contrails, contrailColor, models: MODELS, aircraft, camera, scene, weather, autopilot, rings, missions, traffic, tanker, recorder, spawn, snapCamera, MS_TO_KT };

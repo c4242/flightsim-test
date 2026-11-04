@@ -164,6 +164,7 @@ export function createSky(scene, renderer) {
   }
   let cloudMode = 'scattered';
   let flash = 0;
+  const windAloft = new THREE.Vector3();
   const flashColor = new THREE.Color(1.5, 1.55, 2.0);
   // Base (clear-sky) values for the current time of day, blended per frame.
   const base = { horizon: new THREE.Color(), zenith: new THREE.Color(), sun: new THREE.Color(), sunI: 1, hemiI: 1, fog: [3000, 38000], hemiSky: new THREE.Color() };
@@ -218,6 +219,7 @@ export function createSky(scene, renderer) {
     // Skip ahead through the changing-weather cycle (seconds).
     advanceWeather(sec) { wxTime += sec; },
     setFlash(f) { flash = f; },
+    setWind(surface) { windAloft.copy(surface).multiplyScalar(1.6); },
     // 0 = clear sky around the camera, 1 = under overcast / in cloud / in fog.
     get haze() { return domeMat.uniforms.haze.value; },
     // Cumulus density at the camera (0 outside, 1 deep in a cloud).
@@ -235,6 +237,8 @@ export function createSky(scene, renderer) {
       const target = wx.cov > 0.01 ? clouds.densityAt(cp.x, cp.y, cp.z, wx.cov) : 0;
       cumulus += (target - cumulus) * Math.min(1, 12 * dt);
       clouds.update(env.sunDir, env.horizon, scene.fog);
+      // Cumulus at ~1.5 km move with the wind there: stronger than at the surface.
+      cloudShadow.drift.value.x += windAloft.x * dt; cloudShadow.drift.value.y += windAloft.z * dt;
       // Blend lighting, fog and sky for the weather around the camera.
       const h = camera.position.y;
       const lum = base.horizon.r * 0.3 + base.horizon.g * 0.55 + base.horizon.b * 0.15;
@@ -364,7 +368,7 @@ function buildClouds() {
   const uniforms = {
     sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunColor: { value: new THREE.Color(1, 1, 1) },
     ambient: { value: new THREE.Color(0.6, 0.65, 0.75) }, shadeColor: { value: new THREE.Color(0.55, 0.58, 0.65) },
-    fogColor: { value: new THREE.Color() }, fogNear: { value: 1 }, fogFar: { value: 1e5 }, cover: { value: 1 },
+    fogColor: { value: new THREE.Color() }, fogNear: { value: 1 }, fogFar: { value: 1e5 }, cover: { value: 1 }, drift: { value: cloudShadow.drift.value },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms, transparent: true, depthWrite: false,
@@ -372,19 +376,25 @@ function buildClouds() {
       attribute vec4 aPuff;   // centre xyz, radius
       attribute vec3 aExtra;  // cloud base height, random, cloud's coverage threshold
       uniform float cover;
+      uniform vec2 drift;
       varying vec2 vUv;
       varying vec3 vWorld;
       varying float vBase, vRand, vR, vFade;
       varying vec3 vCentre;
       void main() {
         vUv = position.xy;
-        vCentre = aPuff.xyz;
+        // Clouds drift with the wind and repeat every CLOUD_EXTENT metres; each puff is drawn at
+        // the copy nearest the camera, so the sky never runs out of cloud.
+        vec3 c = aPuff.xyz;
+        c.xz += drift;
+        c.xz += ${CLOUD_EXTENT.toFixed(1)} * floor((cameraPosition.xz - c.xz) / ${CLOUD_EXTENT.toFixed(1)} + 0.5);
+        vCentre = c;
         // Clouds grow in as the coverage rises past their threshold and shrink away as it falls.
         vFade = clamp((cover - aExtra.z) * 8.0, 0.0, 1.0);
         if (vFade <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
         vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-        vWorld = aPuff.xyz + (right * position.x + up * position.y) * aPuff.w * (0.55 + 0.45 * vFade);
+        vWorld = c + (right * position.x + up * position.y) * aPuff.w * (0.55 + 0.45 * vFade);
         vBase = aExtra.x; vRand = aExtra.y; vR = aPuff.w;
         gl_Position = projectionMatrix * viewMatrix * vec4(vWorld, 1.0);
       }`,
@@ -444,6 +454,10 @@ function buildClouds() {
     // Cloud density 0..1 at a point: 1 deep inside a puff, fading out towards its edge.
     setCover(c) { uniforms.cover.value = c; group.visible = c > 0.01; },
     densityAt(x, y, z, cover = 1) {
+      // Into the drifting, repeating cloud field's own coordinates.
+      const E = CLOUD_EXTENT, dr = uniforms.drift.value;
+      x -= dr.x; z -= dr.y;
+      x -= E * Math.floor(x / E + 0.5); z -= E * Math.floor(z / E + 0.5);
       const list = grid.get(Math.floor(x / GRID) * 4096 + Math.floor(z / GRID));
       if (!list) return 0;
       let d = 0;
@@ -476,7 +490,7 @@ function buildClouds() {
         g.fillRect(x - r, y - r, 2 * r, 2 * r);
       }
       const tex = new THREE.CanvasTexture(cv);
-      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.minFilter = THREE.LinearMipmapLinearFilter;
       tex.anisotropy = 4;
       return tex;
