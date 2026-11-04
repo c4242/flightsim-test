@@ -168,6 +168,7 @@ export const F16 = {
     ac.nozzle = 0;
     ac.alphaCmd = 0;
     ac.nzInt = 0;
+    ac.stickP = 0; ac.stickR = 0;
     ac.alphaRef = spawn.onGround ? 0 : 0.22;
     ac.rpm = ac.n2 * 100;
     ac.fcsMode = ac.gearHandle ? 'TO/L' : 'CR';
@@ -256,7 +257,12 @@ export const F16 = {
     // --- Flight control computer ---
     const gearMode = ac.gearHandle || ac.gearDown > 0.01;
     ac.fcsMode = gearMode ? 'TO/L' : 'CR';
-    const stick = clamp(c.elevator, -1, 1);
+    // Command prefilters, as in the real flight control system: the commanded G and roll rate
+    // follow the stick with a short lag (0.2 s in pitch, 0.15 s in roll), so the aircraft's mass
+    // shows in how a manoeuvre builds up and eases off.
+    ac.stickP += (clamp(c.elevator, -1, 1) - ac.stickP) * Math.min(1, dt / 0.2);
+    ac.stickR += (clamp(c.aileron, -1, 1) - ac.stickR) * Math.min(1, dt / 0.15);
+    const stick = ac.stickP;
     let qCmd;
     if (!gearMode) {
       // G command: neutral stick = 1 g; full aft 9 g, full forward -3 g; trim biases it.
@@ -306,7 +312,7 @@ export const F16 = {
       if (dn < 1.5) qCmd = Math.max(qCmd, s.gammaDot - dn * 0.05);
     }
     // Roll rate about the velocity vector (270°/s clean), with sideslip suppressed.
-    const a = clamp(c.aileron, -1, 1);
+    const a = ac.stickR;
     const shaped = 0.35 * a + 0.65 * a * Math.abs(a);
     const qk = s.q / 1000;
     let pMax = gearMode ? 2.0 : 4.7;
@@ -326,7 +332,7 @@ export const F16 = {
       // In pitch the angle-of-attack loop (gain 2.5/s) and this pitch-rate loop (8/s) give a
       // short-period response of about 4.5 rad/s with a damping ratio near 0.9: a pull and release
       // settles back to 1 g with almost no overshoot, as on the real jet.
-      const qdD = clamp(10 * (qCmd - q), -3, 3), pdD = clamp(10 * (pCmd - p), -12, 12), rdD = clamp(5 * (rCmd - r), -2, 2);
+      const qdD = clamp(10 * (qCmd - q), -3, 3), pdD = clamp(5 * (pCmd - p), -7, 7), rdD = clamp(5 * (rCmd - r), -2, 2);
       const mReq = (qdD - C5 * p * r + C6 * (p * p - r * r)) / C7 + heng * r;
       const A = pdD - (C1 * r + C2 * p) * q, B = rdD - (C8 * p - C2 * r) * q;
       const lReq = (C9 * A - C4 * B) / (C3 * C9 - C4 * C4);

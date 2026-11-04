@@ -66,6 +66,10 @@ The F-16 is modelled as realistically as a browser game allows:
   - The pitch response is well damped (a short period of about 4.5 rad/s, damping ratio near 0.9).
     Pull hard and let go, and the jet returns to 1 g in about a second and a half without bouncing.
     At low dynamic pressure it changes AoA more gently, because the stabilator has less authority.
+  - Command prefilters, as in the real system: the commanded G follows the stick with a 0.2 s lag
+    and the commanded roll rate with 0.15 s. Manoeuvres build up and ease off rather than snapping:
+    8 g in about 0.9 s, and full roll rate in about 0.9 s. Released, the roll stops smoothly in about
+    a second with no overshoot.
   - The AoA limiter stops at 25°. It anticipates: at low speed, where there's little nose-down
     authority, it limits the pitch rate so the jet doesn't overshoot into a deep stall.
   - Roll is a rate command of up to about 270°/s, made about the velocity vector, and sideslip is
@@ -84,7 +88,7 @@ Checked performance from the test scripts:
 | Military power at sea level | M0.91 | ≈M0.92 |
 | Top speed at 36,000 ft, full afterburner | M2.02 | M2.05 |
 | Afterburner liftoff (full fuel, rotating at 150 kt) | ≈700 m / ≈175 KCAS | ≈450 m |
-| Peak G, full aft stick at 475 KCAS (8 g reached in 0.7 s) | 8.8 | 9 |
+| Peak G, full aft stick at 475 KCAS (8 g reached in 0.9 s) | 8.8 | 9 |
 | Peak G at 270–330 KCAS (lift-limited) | 6.8 | — |
 | Maximum roll rate | 270°/s | ≈270°/s |
 | Engine-out glide ratio at 200 KCAS | 7.8 | ≈7–8 |
