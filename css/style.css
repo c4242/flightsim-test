@@ -94,3 +94,7 @@ details summary { cursor: pointer; color: #ffcf6a; font-family: "Saira Condensed
   padding: 6px 12px; border-radius: 6px; background: rgba(10, 16, 24, 0.82); color: #cfe6ff; font: 13px/1.35 system-ui, sans-serif;
   pointer-events: none; text-align: center; }
 #assetStatus.failed { color: #ffb3a6; border: 1px solid rgba(255, 120, 100, 0.6); }
+/* Runtime errors, shown so they can be reported (they'd otherwise only be in the console). */
+#errorBox { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 60; max-width: min(92vw, 760px);
+  padding: 8px 12px; border-radius: 6px; background: rgba(40, 8, 8, 0.9); color: #ffc9c0; border: 1px solid rgba(255, 110, 90, 0.7);
+  font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; pointer-events: auto; }

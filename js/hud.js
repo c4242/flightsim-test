@@ -998,6 +998,7 @@ export function createHud(canvas) {
     g = prev;
   }
 
+  const errors = [];
   function draw(ac, camera, cameraMode, dt, { wind, ap, rings, mission, replay, nav, tanker }) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
@@ -1007,8 +1008,15 @@ export function createHud(canvas) {
 
     const jet = ac.type?.kind === 'jet';
     // The jet's HUD is part of the aircraft and is always shown; H only hides the panels and readouts.
-    if (jet) jetHud(ac, camera, cameraMode === 'cockpit', jetWarnings(ac));
-    else if (cameraMode === 'cockpit' && showPanel) cockpitHud(ac, camera);
+    // Each part is guarded: a failure in one (reported on screen by the caller) mustn't blank the rest.
+    try {
+      if (jet) jetHud(ac, camera, cameraMode === 'cockpit', jetWarnings(ac));
+      else if (cameraMode === 'cockpit' && showPanel) cockpitHud(ac, camera);
+    } catch (e) {
+      for (let i = 0; i < 8; i++) g.restore();
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      errors.push(e);
+    }
     if (rings?.active) { guide(ac, camera, rings.next, '#3dff7a'); ringStatus(rings); }
     mapTarget = mission?.active ? mission.target : null;
     if (mapTarget) guide(ac, camera, mapTarget, '#ffb21a');
@@ -1054,6 +1062,8 @@ export function createHud(canvas) {
 
   return {
     draw,
+    // Errors caught while drawing since the last call (for the on-screen error report).
+    takeErrors() { return errors.splice(0); },
     message,
     drawMfdPage,
     drawPanelTexture(cv, ac, ap) { if (ac.type?.kind === 'jet') drawJetPanelTexture(cv, ac); else drawPanelTexture(cv, ac, ap); },

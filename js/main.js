@@ -742,7 +742,32 @@ function updateAssetStatus() {
   }
 }
 
+// ---------- Error reporting ----------
+// Anything that goes wrong at runtime is shown on screen (and the sim keeps running), so it can be
+// seen and reported instead of silently breaking part of the display.
+const errorBox = document.getElementById('errorBox');
+const seenErrors = new Set();
+function reportError(e, where = '') {
+  const msg = `${where ? where + ': ' : ''}${e?.message ?? e}`;
+  if (seenErrors.has(msg)) return;
+  seenErrors.add(msg);
+  console.error(e);
+  const stack = (e?.stack ?? '').split('\n').slice(0, 4).join('\n');
+  errorBox.textContent = `Error (please report): ${msg}\n${stack}`.slice(0, 900);
+  errorBox.classList.remove('hidden');
+  errorBox.onclick = () => errorBox.classList.add('hidden');
+}
+addEventListener('error', (ev) => reportError(ev.error ?? ev.message, 'script'));
+addEventListener('unhandledrejection', (ev) => reportError(ev.reason, 'async'));
+
 function frame(now) {
+  // Schedule the next frame first, so an error in this one can't stop the simulation.
+  requestAnimationFrame(frame);
+  try { frameBody(now); } catch (e) { reportError(e, 'frame'); }
+  for (const e of hud.takeErrors()) reportError(e, 'HUD');
+}
+
+function frameBody(now) {
   updateAssetStatus();
   const rawDt = (now - last) / 1000;
   const dt = Math.min(0.05, rawDt);
@@ -847,7 +872,6 @@ function frame(now) {
     nav: aircraft.crashed ? null : ilsGuidance(aircraft.pos, aircraft.heading),
     replay: replaying ? { t: recorder.t, duration: recorder.duration } : null,
   });
-  requestAnimationFrame(frame);
 }
 
 function spawnPreview() {
