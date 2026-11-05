@@ -142,7 +142,8 @@ export const F16 = {
     { p: new THREE.Vector3(4.93, -0.06, 1.2), wingtip: true },
   ],
   steer: { angle: 0.5, fadeSpeed: 45 },
-  brakeMu: 0.5,             // anti-skid wheel brakes
+  brakeMu: 0.5,             // wheel brakes
+  antiSkid: true,           // braking stops at the tyres' grip limit instead of locking the wheels
   maxSink: 4.0,             // m/s (≈13 ft/s): the gear fails beyond this
   goodSink: 300,            // ft/min: a firm, positive touchdown is normal for a jet
   limits: {
@@ -320,7 +321,10 @@ export const F16 = {
     const ps = shaped * pMax;
     const al = clamp(s.alpha, -0.5, 0.6);
     const pCmd = ps * Math.cos(al);
-    const rCmd = ps * Math.sin(al) + 2.5 * s.beta + c.rudder * 0.35 * clamp(qk / 5, 0, 1);
+    // Weight on wheels: no sideslip feedback (a crosswind on the runway mustn't make the system
+    // fight the tyres); the pedals work the rudder and nosewheel directly.
+    const rCmd = ac.onGround ? c.rudder * 0.35 * clamp(qk / 5, 0, 1)
+      : ps * Math.sin(al) + 2.5 * s.beta + c.rudder * 0.35 * clamp(qk / 5, 0, 1);
 
     let elCmd, ailCmd, rdrCmd;
     if (qS < 300) {
@@ -346,6 +350,9 @@ export const F16 = {
         rdrCmd = ac.rdr + (co.clAil * dCn - dCl * co.cnAil) / det;
       } else { ailCmd = ac.ail; rdrCmd = ac.rdr; }
     }
+    // Weight on wheels: roll and yaw on ground gains. The stick and pedals move the flaperons and
+    // rudder directly (a rate loop would only wind the surfaces to the stops against the gear).
+    if (ac.onGround) { ailCmd = -a * 21.5 * 0.6; rdrCmd = -c.rudder * 30; }
     // Actuators: first-order lag with rate and travel limits (stabilator 60°/s, ±25°;
     // flaperons 80°/s, ±21.5°; rudder 120°/s, ±30°).
     const act = (pos, cmd, lim, rate) => {

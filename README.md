@@ -153,6 +153,23 @@ you get a vapour cone, and you get strake vortices at high AoA.
 
 Skyhaven's runway is 2,400 m so the F-16 can operate from it. Eastfield (850 m) is for the light aircraft only.
 
+## Ground handling (both aircraft)
+
+- **Tyres:**
+  - Each tyre makes cornering force from its slip angle (the angle between where the wheel points and
+    where it's going). The force peaks at about 8° and falls off a little beyond that, and it builds up
+    over a short rolling distance.
+  - Braking and cornering share the tyre's grip (a friction circle), so hard braking leaves less grip
+    for steering.
+  - Peak grip is about 0.8 on dry asphalt, 0.35 on a wet runway, and less on grass.
+- **Brakes:** with brake and rudder together, the wheel on the rudder side brakes harder, for tight
+  taxi turns.
+- **F-16 on the ground:** on the weight-on-wheels switches the flight controls go to ground gains: the
+  stick and pedals move the flaperons and rudder directly, and sideslip isn't fed back. A crosswind on
+  the runway therefore doesn't make the system fight the tyres.
+- **Crosswinds:** both aircraft weathervane into wind on the ground. Hold the centreline with rudder
+  (and, in the Skylark, aileron into wind).
+
 ## Weather, instruments and refuelling
 
 - **Clouds** (Settings → Clouds):
@@ -353,8 +370,10 @@ angle of attack, G-load and wind. A minimap sits top-right and N opens the full 
     when you're slow and the airflow streaks them back at speed.
   - The sound of rain.
   - A wet runway: after a minute or so of rain the tarmac darkens and turns glossy, reflecting the sky.
-    Braking friction then drops by about half, so the F-16 needs about 1,260 m instead of 770 m to stop
-    from 136 kt. It takes a few minutes to dry out after the rain stops.
+    The tyres' grip drops from about 0.8 to 0.35. The F-16's anti-skid brakes then need about 1,170 m
+    instead of 780 m to stop from 136 kt. The Skylark has no anti-skid: full brakes on a wet runway
+    lock the wheels and it slides, with no steering until you ease off. It takes a few minutes to dry
+    out after the rain stops.
   - On a wet runway the wheels throw up spray that hangs behind you, and at night the runway lights
     reflect in the tarmac as long streaks.
   - Wingtip and strake vapour appear at lower G in rain and cloud, where the air is saturated.

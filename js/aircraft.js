@@ -43,6 +43,7 @@ export class Aircraft {
   // spawn: { x, y, z, heading (rad), speed (m/s), pitch (rad), gamma (rad), flaps, throttle, trim, onGround, gearUp }
   reset(spawn) {
     this.omega.set(0, 0, 0);
+    this._fy = null; // tyre side-force state
     this.crashed = false;
     this.crashReason = '';
     this.trim = spawn.trim ?? 0;
@@ -188,16 +189,22 @@ export class Aircraft {
     // --- Landing gear ---
     const onRunway = runwayAt(this.pos.x, this.pos.z);
     const rollMu = onRunway ? 0.02 : 0.06; // grass is draggier than asphalt
+    // Peak tyre friction: dry asphalt, wet asphalt (rain), grass.
+    const wet = !!weather?.rain;
+    const muPeak = onRunway ? (wet ? 0.35 : 0.8) : (wet ? 0.3 : 0.45);
     let onGround = false;
     let impact = 0;
+    this.wheelsLocked = false;
     _omegaW.copy(this.omega).applyQuaternion(this.quat);
     const groundSpeed = this.vel.length();
     const gearOut = this.gearDown >= 0.999;
-    for (const gear of gearOut ? T.gear : []) {
+    if (!this._fy) this._fy = T.gear.map(() => 0);
+    for (let gi = 0; gi < (gearOut ? T.gear.length : 0); gi++) {
+      const gear = T.gear[gi];
       _r.copy(gear.p).applyQuaternion(this.quat);
       const wy = this.pos.y + _r.y;
       let depth = surf.height - wy;
-      if (depth <= 0) continue;
+      if (depth <= 0) { this._fy[gi] = 0; continue; }
       if (surf.water) { this.crash('Ditched in the sea'); return; }
       // Grass is bumpy.
       if (!onRunway && groundSpeed > 2) depth += Math.sin(this.pos.x * 1.7 + this.pos.z * 2.3) * 0.012;
@@ -215,10 +222,35 @@ export class Aircraft {
       const sx = -wf.z, sz = wf.x;               // sideways direction
       const vl = pv.x * wf.x + pv.z * wf.z;      // rolling speed
       const vs = pv.x * sx + pv.z * sz;          // skid speed
-      // A wet runway roughly halves the braking friction.
-      const mu = rollMu + (gear.brake ? Math.max(c.brake, this.parkBrake ? 1 : 0) * T.brakeMu * (weather?.rain ? 0.55 : 1) : 0);
-      const roll = -clamp(vl / 0.3, -1, 1) * mu * normal;
-      const side = -clamp(vs / 0.2, -1, 1) * 0.9 * normal;
+      // --- Tyre ---
+      // Brakes (with brake + rudder braking the wheel on the rudder side harder, for tight taxi turns).
+      let brake = gear.brake ? Math.max(c.brake, this.parkBrake ? 1 : 0) : 0;
+      if (brake > 0 && Math.abs(c.rudder) > 0.1) brake *= 1 - Math.max(0, gear.p.x > 0 ? -c.rudder : c.rudder);
+      const peak = muPeak * normal;
+      // Longitudinal: rolling resistance plus braking. With anti-skid (F-16) braking stops at the
+      // grip limit; without it (Skylark) asking for more locks the wheel and it slides.
+      let fx = -clamp(vl / 0.3, -1, 1) * (rollMu * normal + brake * T.brakeMu * normal);
+      const locked = !T.antiSkid && brake * T.brakeMu > muPeak && Math.abs(vl) > 1;
+      if (T.antiSkid) fx = clamp(fx, -peak * 0.95, peak * 0.95);
+      // Lateral: cornering force from the slip angle (peaks at about 8°, then falls off a little),
+      // building up over a short rolling distance (the tyre's relaxation length, ~0.5 m).
+      const slip = Math.atan2(vs, Math.max(1.0, Math.abs(vl)));
+      let fyTarget = -peak * Math.sin(1.5 * Math.atan(8 * slip));
+      let fyNow = this._fy[gi];
+      fyNow += (fyTarget - fyNow) * Math.min(1, dt * (Math.abs(vl) / 0.5 + 25));
+      this._fy[gi] = fyNow;
+      let fy = fyNow;
+      if (locked) {
+        // A locked wheel slides with kinetic friction opposite its motion: no cornering force left.
+        const vh = Math.hypot(vl, vs) || 1;
+        fx = -0.75 * peak * vl / vh; fy = -0.75 * peak * vs / vh;
+      } else {
+        // Friction circle: braking and cornering share the available grip.
+        const tot = Math.hypot(fx, fy);
+        if (tot > peak) { fy *= Math.sqrt(Math.max(0, peak * peak - fx * fx)) / Math.max(Math.abs(fy), 1e-6); }
+      }
+      this.wheelsLocked = this.wheelsLocked || locked;
+      const roll = fx, side = fy;
       const f = _v.set(wf.x * roll + sx * side, normal, wf.z * roll + sz * side);
       _force.add(f);
       // Torque = r × F, converted to the body frame and divided by inertia.

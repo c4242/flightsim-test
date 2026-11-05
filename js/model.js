@@ -110,7 +110,7 @@ export function createAircraftModel({ stripeColor = 0xc8322a, cockpitInterior = 
     fair.position.set(x, -0.98, z);
     return wheel;
   };
-  const wheels = [gearAt(0, -2.6, -0.55), gearAt(-1.3, 0.3, -0.4), gearAt(1.3, 0.3, -0.4)];
+  const wheels = [gearAt(0, -2.6, -0.55), gearAt(-1.3, 0.55, -0.4), gearAt(1.3, 0.55, -0.4)];
 
   // Propeller: two blades plus a translucent disc that shows at high RPM.
   const prop = new THREE.Group();

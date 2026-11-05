@@ -71,8 +71,8 @@ export const SKYLARK = {
   retractableGear: false,
   gear: [
     { p: new THREE.Vector3(0, -1.35, -2.6), steer: true, brake: false, k: 40000, c: 4000 },
-    { p: new THREE.Vector3(-1.3, -1.35, 0.3), steer: false, brake: true, k: 55000, c: 5000 },
-    { p: new THREE.Vector3(1.3, -1.35, 0.3), steer: false, brake: true, k: 55000, c: 5000 },
+    { p: new THREE.Vector3(-1.3, -1.35, 0.55), steer: false, brake: true, k: 55000, c: 5000 },
+    { p: new THREE.Vector3(1.3, -1.35, 0.55), steer: false, brake: true, k: 55000, c: 5000 },
   ],
   structure: [
     { p: new THREE.Vector3(0, 0, -3.8) },                     // spinner
